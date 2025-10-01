@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "../include/draw.h"
+#include "../include/fill_polygon.h"
 #include "../include/gl_app.h"
 #include "../include/polygon.h"
 
@@ -46,7 +47,7 @@ int main() {
         }
     });
 
-    app.setKeyCallback([](int key, int, int action, int) {
+    app.setKeyCallback([&cfg, &app](int key, int, int action, int) {
         if (action != GLFW_PRESS) return;
         switch (key) {
             case GLFW_KEY_ESCAPE:
@@ -78,6 +79,11 @@ int main() {
             case GLFW_KEY_W:
                 linecolor = {255, 255, 255, 255};
                 break;
+            case GLFW_KEY_F:
+                fill_polygon(polygons[0], (unsigned int)cfg.height,
+                             polygons[0].gFillVerts);
+                polygons[0].filled = true;
+                break;
         }
     });
 
@@ -89,7 +95,11 @@ int main() {
         app.beginFrame();
 
         gVerts.clear();
-        for (const auto& poly : polygons) draw_polygon_walls(poly);
+        for (const auto& poly : polygons) {
+            draw_polygon_walls(poly);
+            if (poly.filled)
+                app.drawPoints(poly.gFillVerts);
+        }
         draw_polygon_walls(p);
 
         app.drawPoints(gVerts);

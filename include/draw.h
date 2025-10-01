@@ -11,6 +11,8 @@ using namespace std;
 
 void write_pixel(int x, int y, Color color);
 
+void write_pixel(int x, int y, Color color, vector<float>& _gVerts);
+
 void write_pixel_dilated(int x, int y, Color color, int width);
 
 

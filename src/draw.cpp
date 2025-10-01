@@ -21,6 +21,17 @@ void write_pixel(int x, int y, Color color) {
     gVerts.push_back(a);
 }
 
+void write_pixel(int x, int y, Color color, vector<float>& _gVerts) {
+    float r, g, b, a;
+    colorToFloats(color, r, g, b, a);
+    _gVerts.push_back((float)x);
+    _gVerts.push_back((float)y);
+    _gVerts.push_back(r);
+    _gVerts.push_back(g);
+    _gVerts.push_back(b);
+    _gVerts.push_back(a);
+}
+
 void write_pixel_dilated(int x, int y, Color color, int width) {
     int manhd;
     int xmid = MAX_WIDTH - 1, ymid = MAX_WIDTH - 1;

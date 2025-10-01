@@ -18,4 +18,6 @@ struct line {
 struct polygon {
     std::vector<line> walls;
     Color color;
+    std::vector<float> gFillVerts;
+    bool filled = false;
 };
