@@ -3,8 +3,6 @@
 #include <list>
 
 void fill_block(unsigned int y, int x_start, int x_end, Color color, vector<float>& gFillVerts) {
-    cout << "Filling block at y=" << y << " from x=" << x_start
-         << " to x=" << x_end << "\n";
     for (int x = x_start; x < x_end; x++) {
         write_pixel(x, y, color, gFillVerts);
     }
@@ -62,9 +60,9 @@ void insert_sorted(list<node>& aet, const node& n) {
 }
 
 void fill_polygon(polygon p, unsigned int screen_height, vector<float>& gFillVerts) { //! lembrar de nao desenhar na direita e topo
-    cout << "Filling polygon with " << p.walls.size() << " walls\n";
     vector<list<node>> et(screen_height);  // edge table
     list<node> aet;                        // active edge table
+    int last_y = 0;
     for (auto l : p.walls) {               // criando ET
         if (l.v1.y == l.v2.y) continue;  // linhas horizontais não entram na ET
         node n;
@@ -82,10 +80,13 @@ void fill_polygon(polygon p, unsigned int screen_height, vector<float>& gFillVer
         n.m_inv.top = (x1 - x0);
         n.m_inv.bottom = (y1 - y0);
 
+        if (n.ymax > last_y) last_y = n.ymax;
         et[y0].push_back(n);
     }
 
+
     for (unsigned int y = 0; y < screen_height; y++) {
+        if (y == last_y) break;
         // transferir arestas da ET para AET
         for (const auto& a : et[y]) insert_sorted(aet, a);
 
@@ -104,7 +105,7 @@ void fill_polygon(polygon p, unsigned int screen_height, vector<float>& gFillVer
             int curr_x;
             if (paridade) {  // impar
                 curr_x = floor_frac(a.xmin);
-                fill_block(y, last_x, curr_x, p.color, gFillVerts);
+                fill_block(y, last_x, curr_x - 1, p.color, gFillVerts);
             } else {
                 curr_x = ceil_frac(a.xmin);
             }

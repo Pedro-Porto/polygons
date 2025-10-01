@@ -9,8 +9,8 @@
 extern std::vector<float> gVerts;
 
 static Color linecolor = {255, 255, 255, 255};
-static Color polygoncolor = {255, 0, 0, 255};
-static int linewidth = 3;
+Color polygoncolor = {255, 0, 0, 255};
+int linewidth = 3;
 
 static bool drawing = false;
 static vertex v;
@@ -57,6 +57,9 @@ int main() {
                 if (!p.walls.empty()) {
                     drawing = false;
                     p.walls.back().v2 = p.walls.front().v1;
+                    p.color = polygoncolor;
+                    fill_polygon(p, (unsigned int)cfg.height, p.gFillVerts);
+                    p.filled = true;
                     polygons.push_back(p);
                     p.walls.clear();
                 }
@@ -68,21 +71,16 @@ int main() {
                 if (linewidth < 10) linewidth++;
                 break;
             case GLFW_KEY_R:
-                linecolor = {255, 0, 0, 255};
+                polygoncolor = {255, 0, 0, 255};
                 break;
             case GLFW_KEY_G:
-                linecolor = {0, 255, 0, 255};
+                polygoncolor = {0, 255, 0, 255};
                 break;
             case GLFW_KEY_B:
-                linecolor = {0, 0, 255, 255};
+                polygoncolor = {0, 0, 255, 255};
                 break;
             case GLFW_KEY_W:
-                linecolor = {255, 255, 255, 255};
-                break;
-            case GLFW_KEY_F:
-                fill_polygon(polygons[0], (unsigned int)cfg.height,
-                             polygons[0].gFillVerts);
-                polygons[0].filled = true;
+                polygoncolor = {255, 255, 255, 255};
                 break;
         }
     });
@@ -96,9 +94,9 @@ int main() {
 
         gVerts.clear();
         for (const auto& poly : polygons) {
-            draw_polygon_walls(poly);
             if (poly.filled)
-                app.drawPoints(poly.gFillVerts);
+                for (const auto& f : poly.gFillVerts) gVerts.push_back(f);
+            draw_polygon_walls(poly);
         }
         draw_polygon_walls(p);
 
