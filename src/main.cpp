@@ -61,8 +61,16 @@ int main() {
                     fill_polygon(p, (unsigned int)cfg.height, p.gFillVerts);
                     p.filled = true;
                     polygons.push_back(p);
+                    p.filled=false;
+                    p.gFillVerts.clear();
                     p.walls.clear();
                 }
+                break;
+            case GLFW_KEY_BACKSPACE:
+            p.walls.clear();
+            p.filled=false;
+            p.gFillVerts.clear();
+            polygons.clear();
                 break;
             case GLFW_KEY_Z:
                 if (linewidth >= 2) linewidth--;
