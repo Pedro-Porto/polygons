@@ -1,6 +1,6 @@
 #include "../include/lines.h"
 
-void plot_line(line l) {
+void plot_line(line l, Framebuffer& fb) {
     // definição da reta
     int xi = l.v1.x;
     int yi = l.v1.y;
@@ -31,7 +31,7 @@ void plot_line(line l) {
     }
     int x = xi;
     int y = yi;
-    write_pixel_dilated(x, y, l.color, l.width);
+    write_pixel_dilated(x, y, l.color, l.width, fb);
 
     int steps = down45 ? dx : dy;
 
@@ -46,6 +46,6 @@ void plot_line(line l) {
             x += px;
             y += py;
         }
-        write_pixel_dilated(x, y, l.color, l.width);
+        write_pixel_dilated(x, y, l.color, l.width, fb);
     }
 }

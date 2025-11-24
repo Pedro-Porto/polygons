@@ -3,4 +3,4 @@
 #include "../include/draw.h"
 #include <math.h>
 
-void plot_line(line l);
+void plot_line(line l, Framebuffer& fb);

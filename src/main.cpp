@@ -5,12 +5,11 @@
 #include "../include/fill_polygon.h"
 #include "../include/gl_app.h"
 #include "../include/polygon.h"
+#include "../include/framebuffer.h"
 
-extern std::vector<float> gVerts;
-
-static Color linecolor = {255, 255, 255, 255};
-Color polygoncolor = {255, 0, 0, 255};
-int linewidth = 3;
+static Color linecolor   = {255, 255, 255, 255};
+static Color polygoncolor= {255,   255,   0, 255};
+static int linewidth = 3;
 
 static bool drawing = false;
 static vertex v;
@@ -21,10 +20,13 @@ static std::vector<polygon> polygons;
 int main() {
     GLApp app;
     GLApp::Config cfg;
-    cfg.width = 900;
+    cfg.width  = 900;
     cfg.height = 600;
-    cfg.title = "Polygons";
+    cfg.title  = "Polygons (Framebuffer)";
     if (!app.init(cfg)) return -1;
+
+    // framebuffer CPU (cor + z)
+    Framebuffer fb(cfg.width, cfg.height);
 
     app.setCursorPosCallback([](double mx, double my) {
         v.x = (int)mx;
@@ -47,37 +49,41 @@ int main() {
         }
     });
 
-    app.setKeyCallback([&cfg, &app](int key, int, int action, int) {
+    app.setKeyCallback([&cfg](int key, int, int action, int) {
         if (action != GLFW_PRESS) return;
         switch (key) {
             case GLFW_KEY_ESCAPE:
                 glfwSetWindowShouldClose(glfwGetCurrentContext(), 1);
                 break;
+
             case GLFW_KEY_SPACE:
                 if (!p.walls.empty()) {
                     drawing = false;
-                    p.walls.back().v2 = p.walls.front().v1;
+                    p.walls.back().v2 = p.walls.front().v1; // fecha polígono
                     p.color = polygoncolor;
-                    fill_polygon(p, (unsigned int)cfg.height, p.gFillVerts);
                     p.filled = true;
                     polygons.push_back(p);
-                    p.filled=false;
-                    p.gFillVerts.clear();
+
+                    // prepara novo polígono
+                    p.filled = false;
                     p.walls.clear();
                 }
                 break;
+
             case GLFW_KEY_BACKSPACE:
-            p.walls.clear();
-            p.filled=false;
-            p.gFillVerts.clear();
-            polygons.clear();
+                p.walls.clear();
+                p.filled = false;
+                polygons.clear();
                 break;
+
             case GLFW_KEY_Z:
                 if (linewidth >= 2) linewidth--;
                 break;
+
             case GLFW_KEY_X:
                 if (linewidth < 10) linewidth++;
                 break;
+
             case GLFW_KEY_R:
                 polygoncolor = {255, 0, 0, 255};
                 break;
@@ -100,15 +106,31 @@ int main() {
     while (!glfwWindowShouldClose(app.window())) {
         app.beginFrame();
 
-        gVerts.clear();
-        for (const auto& poly : polygons) {
-            if (poly.filled)
-                for (const auto& f : poly.gFillVerts) gVerts.push_back(f);
-            draw_polygon_walls(poly);
+        // se a janela mudar de tamanho, redimensiona o fb
+        int w, h;
+        glfwGetFramebufferSize(app.window(), &w, &h);
+        if (w != fb.width() || h != fb.height()) {
+            fb.resize(w, h);
         }
-        draw_polygon_walls(p);
 
-        app.drawPoints(gVerts);
+        // limpa buffers CPU
+        fb.clear({0,0,0,255});
+        fb.clearDepth(1e9f);
+
+        // rasteriza todos os polígonos já fechados
+        for (const auto& poly : polygons) {
+            if (poly.filled) {
+                fill_polygon(poly, (unsigned int)fb.height(), fb); // <<< agora escreve no fb
+            }
+            draw_polygon_walls(poly, fb); // <<< walls no fb (wireframe)
+        }
+
+        // desenha o polígono em construção (só walls)
+        draw_polygon_walls(p, fb);
+
+        // OpenGL só mostra a imagem pronta do framebuffer
+        app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
+
         app.endFrame();
     }
 

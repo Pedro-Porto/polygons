@@ -2,9 +2,12 @@
 
 #include <list>
 
-void fill_block(unsigned int y, int x_start, int x_end, Color color, vector<float>& gFillVerts) {
+using std::list;
+using std::vector;
+
+void fill_block(unsigned int y, int x_start, int x_end, Color color, Framebuffer& fb) {
     for (int x = x_start; x < x_end; x++) {
-        write_pixel(x, y, color, gFillVerts);
+        write_pixel(x, y, color, fb);
     }
 }
 
@@ -59,7 +62,7 @@ void insert_sorted(list<node>& aet, const node& n) {
     aet.insert(it, n);
 }
 
-void fill_polygon(polygon p, unsigned int screen_height, vector<float>& gFillVerts) { //! lembrar de nao desenhar na direita e topo
+void fill_polygon(polygon p, unsigned int screen_height, Framebuffer& fb) { //! lembrar de nao desenhar na direita e topo
     vector<list<node>> et(screen_height);  // edge table
     list<node> aet;                        // active edge table
     int last_y = 0;
@@ -105,7 +108,7 @@ void fill_polygon(polygon p, unsigned int screen_height, vector<float>& gFillVer
             int curr_x;
             if (paridade) {  // impar
                 curr_x = floor_frac(a.xmin);
-                fill_block(y, last_x, curr_x - 1, p.color, gFillVerts);
+                fill_block(y, last_x, curr_x - 1, p.color, fb);
             } else {
                 curr_x = ceil_frac(a.xmin);
             }

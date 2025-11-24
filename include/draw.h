@@ -1,19 +1,21 @@
 #ifndef DRAW_H
 #define DRAW_H
 
-#include <math.h>
-#include <stdio.h>
-#include <iostream>
-#include "../include/types.h"
+#include "types.h"
+#include "framebuffer.h"
+
 #define MAX_WIDTH 10
 
-using namespace std;
+static inline void write_pixel(int x, int y, Color c, Framebuffer& fb) {
+    if (x < 0 || y < 0 || x >= fb.width() || y >= fb.height()) return;
+    fb.color(x, y) = (uint32_t(c.r) << 24) | (uint32_t(c.g) << 16) |
+                     (uint32_t(c.b) << 8)  | uint32_t(c.a);
+}
 
-void write_pixel(int x, int y, Color color);
+static inline int write_pixel_z(int x, int y, float z, Color c, Framebuffer& fb) {
+    return fb.set(x, y, z, c);
+}
 
-void write_pixel(int x, int y, Color color, vector<float>& _gVerts);
-
-void write_pixel_dilated(int x, int y, Color color, int width);
-
+void write_pixel_dilated(int x, int y, Color c, int width, Framebuffer& fb);
 
 #endif

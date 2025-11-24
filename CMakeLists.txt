@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.20)
-project(polygons_glfw_glad LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.5)
+project(polygons_glfw_glad LANGUAGES C CXX)
 
 # c++17
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -12,9 +12,11 @@ endif()
 
 include(FetchContent)
 
+# ---------------- GLFW ----------------
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
   glfw
   GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -22,35 +24,35 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glfw)
 
-FetchContent_Declare(
-  glad
-  GIT_REPOSITORY https://github.com/Dav1dde/glad.git
-  GIT_TAG        v0.1.36
-)
+# ---------------- GLAD local ----------------
+# Sua estrutura:
+# external/glad/include/glad/glad.h
+# external/glad/include/KHR/khrplatform.h
+# external/glad/src/glad.c
 
-set(GLAD_PROFILE "core" CACHE STRING "" FORCE)
-set(GLAD_API "gl=3.3" CACHE STRING "" FORCE)
-set(GLAD_GENERATOR "c" CACHE STRING "" FORCE)
-FetchContent_MakeAvailable(glad)
+set(GLAD_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/glad/include")
+set(GLAD_SOURCE      "${CMAKE_SOURCE_DIR}/external/glad/src/glad.c")
 
-
+# ---------------- Sources ----------------
 file(GLOB SRC_FILES CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/src/*.cpp"
 )
 
-add_executable(app ${SRC_FILES})
+add_executable(app
+  ${SRC_FILES}
+  ${GLAD_SOURCE}   # compila o glad.c junto
+)
 
 target_include_directories(app PRIVATE
   ${CMAKE_SOURCE_DIR}/include
+  ${GLAD_INCLUDE_DIR}   # headers do glad
 )
 
-
-target_link_libraries(app PRIVATE glad glfw)
-
+target_link_libraries(app PRIVATE glfw)
 
 if(UNIX AND NOT APPLE)
   find_package(OpenGL REQUIRED)
-  target_link_libraries(app PRIVATE OpenGL::GL)
+  target_link_libraries(app PRIVATE OpenGL::GL dl)
 endif()
 
 if(WIN32)

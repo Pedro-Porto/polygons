@@ -13,4 +13,4 @@ struct node {
     frac m_inv;
 };
 
-void fill_polygon(polygon p, unsigned int screen_height, vector<float>& gFillVerts) ;
+void fill_polygon(polygon p, unsigned int screen_height, Framebuffer& fb) ;
