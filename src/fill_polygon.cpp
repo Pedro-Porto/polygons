@@ -1,18 +1,15 @@
 #include "../include/fill_polygon.h"
 
 #include <list>
+#include <algorithm>
+#include <iostream>
 
 using std::list;
 using std::vector;
 
-void fill_block(unsigned int y, int x_start, int x_end, Color color, Framebuffer& fb) {
-    for (int x = x_start; x < x_end; x++) {
-        write_pixel(x, y, color, fb);
-    }
-}
+// ------------------------- SCANLINE HELPERS -------------------------
 
 int floor_frac(const frac& f) {
-    // b > 0
     const int t = f.top, b = f.bottom;
     int q = t / b;
     int r = t % b;
@@ -21,7 +18,6 @@ int floor_frac(const frac& f) {
 }
 
 int ceil_frac(const frac& f) {
-    // b > 0
     const int t = f.top, b = f.bottom;
     int q = t / b;
     int r = t % b;
@@ -42,86 +38,187 @@ frac add_frac(const frac& a, const frac& b) {
 }
 
 int compare_frac(const frac& a, const frac& b) {
-    // a < b -> negativo
-    // a == b -> 0
-    // a > b -> positivo
     return a.top * b.bottom - b.top * a.bottom;
 }
 
-void order_xmin(list<node>& aet) {
-    aet.sort([](const node& a, const node& b) {
-        return compare_frac(a.xmin, b.xmin) < 0;
-    });
-}
 
-void insert_sorted(list<node>& aet, const node& n) {
-    auto it = aet.begin();
-    while (it != aet.end() && compare_frac(it->xmin, n.xmin) < 0) {
-        ++it;
-    }
-    aet.insert(it, n);
-}
+// ------------------------- NODE PARA TODOS SHADINGS -------------------------
+//
+// Agora o node carrega TUDO que pode ser necessário:
+// - Z
+// - intensidade (Gouraud)
+// - normal (Phong)
+//
+// Mas só será realmente usado conforme o modo de shading.
+//
+struct node_z {
+    int ymax;
+    frac xmin;
+    frac m_inv;
 
-void fill_polygon(polygon p, unsigned int screen_height, Framebuffer& fb) { //! lembrar de nao desenhar na direita e topo
-    vector<list<node>> et(screen_height);  // edge table
-    list<node> aet;                        // active edge table
-    int last_y = 0;
-    for (auto l : p.walls) {               // criando ET
-        if (l.v1.y == l.v2.y) continue;  // linhas horizontais não entram na ET
-        node n;
-        int y0 = l.v1.y, y1 = l.v2.y;
-        int x0 = l.v1.x, x1 = l.v2.x;
+    float z_min;
+    float dz_dy;
 
+    float i_min;      // intensidade por vértice (Gouraud)
+    float di_dy;
+
+    glm::vec3 n_min;  // normal na aresta (Phong)
+    glm::vec3 dn_dy;
+};
+
+
+// ------------------------- FILL POLYGON -------------------------
+
+void fill_polygon(const Polygon& p,
+                  Framebuffer& fb,
+                  Renderer& renderer)
+{
+    if (p.verts.size() < 3) return;
+    if (!p.material) return;
+
+    int H = fb.height();
+    vector<list<node_z>> et(H);
+    list<node_z> aet;
+
+    int min_y = H;
+    int max_y = 0;
+
+    size_t N = p.verts.size();
+
+    // ------------------------ ET CONSTRUCTION ------------------------
+    for (size_t i = 0; i < N; i++) {
+        const Vertex2D& v0 = p.verts[i];
+        const Vertex2D& v1 = p.verts[(i + 1) % N];
+
+        if (v0.y == v1.y) continue; // ignore horizontals
+
+        node_z nd;
+
+        int y0 = v0.y, y1 = v1.y;
+        int x0 = v0.x, x1 = v1.x;
+        float z0 = v0.z, z1 = v1.z;
+
+        float I0 = v0.intensity;
+        float I1 = v1.intensity;
+
+        glm::vec3 n0 = v0.normal;
+        glm::vec3 n1 = v1.normal;
+
+        // sort so y0 < y1
         if (y0 > y1) {
             std::swap(y0, y1);
             std::swap(x0, x1);
+            std::swap(z0, z1);
+            std::swap(I0, I1);
+            std::swap(n0, n1);
         }
 
-        n.xmin.top = x0;
-        n.xmin.bottom = 1;
-        n.ymax = y1;
-        n.m_inv.top = (x1 - x0);
-        n.m_inv.bottom = (y1 - y0);
+        nd.xmin = {x0, 1};
+        nd.ymax = y1;
+        nd.m_inv = {x1 - x0, y1 - y0};
 
-        if (n.ymax > last_y) last_y = n.ymax;
-        et[y0].push_back(n);
+        nd.z_min = z0;
+        nd.dz_dy = (z1 - z0) / float(y1 - y0);
+
+        nd.i_min = I0;
+        nd.di_dy = (I1 - I0) / float(y1 - y0);
+
+        nd.n_min = n0;
+        nd.dn_dy = (n1 - n0) / float(y1 - y0);
+
+        min_y = std::min(min_y, y0);
+        max_y = std::max(max_y, y1);
+
+        if (y0 >= 0 && y0 < H)
+            et[y0].push_back(nd);
     }
 
+    min_y = std::max(min_y, 0);
+    max_y = std::min(max_y, H - 1);
 
-    for (unsigned int y = 0; y < screen_height; y++) {
-        if (y == last_y) break;
-        // transferir arestas da ET para AET
-        for (const auto& a : et[y]) insert_sorted(aet, a);
+    // ------------------------ SCANLINE ------------------------
+    for (int y = min_y; y <= max_y; y++) {
 
-        // verificar se tem arestas para remover ymax = y
+        // Add edges starting at this scanline
+        for (const auto& e : et[y]) {
+            auto it = aet.begin();
+            while (it != aet.end() && compare_frac(it->xmin, e.xmin) < 0) ++it;
+            aet.insert(it, e);
+        }
+
+        // Remove edges reaching ymax
         for (auto it = aet.begin(); it != aet.end();) {
-            if (it->ymax == (int)y)
-                it = aet.erase(it);
-            else
-                ++it;
+            if (it->ymax == y) it = aet.erase(it);
+            else ++it;
         }
 
-        // desenhar bloco de pixels
-        bool paridade = 0;  // par
+        if (aet.empty()) continue;
+
+        // --------- PAIR THE INTERSECTIONS (span fill) ---------
+        bool inside = false;
         int last_x = 0;
-        for (auto& a : aet) {
-            int curr_x;
-            if (paridade) {  // impar
-                curr_x = floor_frac(a.xmin);
-                fill_block(y, last_x, curr_x - 1, p.color, fb);
-            } else {
-                curr_x = ceil_frac(a.xmin);
+        float last_z = 0.0f;
+        float last_I = 0.0f;
+        glm::vec3 last_N(0,0,1);
+
+        for (auto& e : aet) {
+            int x_curr = inside ? floor_frac(e.xmin) : ceil_frac(e.xmin);
+
+            if (inside) {
+                int x0 = last_x, x1 = x_curr;
+                if (x0 > x1) std::swap(x0, x1);
+
+                float z0 = last_z, z1 = e.z_min;
+                float dz = (x1 != x0) ? (z1 - z0) / float(x1 - x0) : 0.0f;
+
+                float I0 = last_I, I1 = e.i_min;
+                float dI = (x1 != x0) ? (I1 - I0) / float(x1 - x0) : 0.0f;
+
+                glm::vec3 n0 = last_N, n1 = e.n_min;
+                glm::vec3 dn = (x1 != x0) ? (n1 - n0) / float(x1 - x0) : glm::vec3(0);
+
+                // ---- PIXEL LOOP ----
+                float zz = z0;
+                float II = I0;
+                glm::vec3 nn = n0;
+
+                for (int x = x0; x <= x1; x++) {
+
+                    // posição aproximada em screen-space
+                    glm::vec3 pos(x, y, zz);
+
+                    Color c = renderer.shadePixel(
+                        *p.material,
+                        II,
+                        nn,
+                        pos
+                    );
+
+                    write_pixel_z(x, y, zz, c, fb);
+
+                    zz += dz;
+                    II += dI;
+                    nn += dn;
+                }
             }
-            last_x = curr_x;
-            paridade = !paridade;
+
+            last_x = x_curr;
+            last_z = e.z_min;
+            last_I = e.i_min;
+            last_N = e.n_min;
+            inside = !inside;
         }
 
-        // atualiza valores de xmin
-        for (auto& a : aet) {
-            a.xmin = add_frac(a.xmin, a.m_inv);
+        // update AET
+        for (auto& e : aet) {
+            e.xmin = add_frac(e.xmin, e.m_inv);
+            e.z_min += e.dz_dy;
+            e.i_min += e.di_dy;
+            e.n_min += e.dn_dy;
         }
 
-        // mantem aet ordenada
-        order_xmin(aet);
+        aet.sort([](const node_z& a, const node_z& b) {
+            return compare_frac(a.xmin, b.xmin) < 0;
+        });
     }
 }

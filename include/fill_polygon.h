@@ -1,6 +1,7 @@
 #pragma once
 #include "../include/types.h"
 #include "../include/draw.h"
+#include "../include/renderer.h"
 
 struct frac {
     int top;
@@ -13,4 +14,4 @@ struct node {
     frac m_inv;
 };
 
-void fill_polygon(polygon p, unsigned int screen_height, Framebuffer& fb) ;
+void fill_polygon(const Polygon& p, Framebuffer& fb, Renderer& renderer);
