@@ -25,6 +25,14 @@ class Framebuffer {
     // retorna 1 se escreveu, 0 se não
     int set(int x, int y, float z, Color c);
 
+    int setRaw(int x, int y, Color c) {
+        if (x < 0 || y < 0 || x >= W || y >= H) return 0;
+
+        int i = y * W + x;
+        colorBuf[i] = pack(c);
+        return 1;
+    }
+
     // ponteiros crus pra upload (textura)
     uint32_t* colorData() { return colorBuf.data(); }
     float* depthData() { return zBuf.data(); }

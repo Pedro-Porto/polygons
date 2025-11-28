@@ -42,15 +42,6 @@ int compare_frac(const frac& a, const frac& b) {
 }
 
 
-// ------------------------- NODE PARA TODOS SHADINGS -------------------------
-//
-// Agora o node carrega TUDO que pode ser necessário:
-// - Z
-// - intensidade (Gouraud)
-// - normal (Phong)
-//
-// Mas só será realmente usado conforme o modo de shading.
-//
 struct node_z {
     int ymax;
     frac xmin;

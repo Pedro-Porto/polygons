@@ -1,19 +1,18 @@
 #include "../include/camera.h"
+#include <iostream>
 
-static glm::mat3 makeView(const glm::vec3& eye,
-                          const glm::vec3& look,
-                          const glm::vec3& up)
+static void getCameraBasis(const glm::vec3& eye,
+                           const glm::vec3& look,
+                           const glm::vec3& up,
+                           glm::vec3& forward,
+                           glm::vec3& right,
+                           glm::vec3& trueUp)
 {
-    glm::vec3 f = glm::normalize(look - eye);
-    glm::vec3 r = glm::normalize(glm::cross(f, up));
-    glm::vec3 u = glm::cross(r, f);
-
-    glm::mat3 V;
-    V[0] = r;
-    V[1] = u;
-    V[2] = -f;
-    return V;
+    forward = glm::normalize(look - eye);          // Z da câmera
+    right   = glm::normalize(glm::cross(forward, up)); // X da câmera
+    trueUp  = glm::normalize(glm::cross(right, forward)); // Y da câmera ortogonalizado
 }
+
 
 bool Camera::projectVertex(
     const glm::vec3& pos,
@@ -22,10 +21,9 @@ bool Camera::projectVertex(
     int W, int H
 ) const
 {
-    glm::mat3 V = makeView(eye, look, up);
-
-    // posição relativa à câmera
-    glm::vec3 p = V * (pos - eye);
+    glm::mat4 V = glm::lookAt(eye, look, up);
+    glm::vec4 p4 = V * glm::vec4(pos,1);
+    glm::vec3 p  = glm::vec3(p4);
 
     // atrás da câmera → descarta
     if (p.z >= -nearp) return false;
@@ -100,4 +98,119 @@ Polygon Camera::projectAndClip(const Polyhedron& obj,
         return Polygon();
 
     return clipPolygon2D(poly, W, H);
+}
+
+
+void Camera::updateFromOrbitAngles() {
+    float az = glm::radians(azimuth);
+    float el = glm::radians(elevation);
+
+    // garante distância positiva
+    float r = orbitDistance;
+    if (r <= 0.0f)
+        r = glm::length(eye - look);
+
+    // converte esféricas → cartesianas
+    glm::vec3 offset;
+    offset.x = r * cos(el) * cos(az);
+    offset.y = r * sin(el);
+    offset.z = r * cos(el) * sin(az);
+
+    eye = look + offset;
+
+    // recalcula forward / right / up
+    glm::vec3 forward = glm::normalize(look - eye);
+    glm::vec3 worldUp(0, 1, 0);
+    glm::vec3 right   = glm::normalize(glm::cross(forward, worldUp));
+    up                = glm::normalize(glm::cross(right, forward));
+    
+}
+
+void Camera::addAzimuth(float deltaDeg) {
+    azimuth += deltaDeg;
+    if (azimuth > 180.0f)  azimuth -= 360.0f;
+    if (azimuth < -180.0f) azimuth += 360.0f;
+    updateFromOrbitAngles();
+}
+
+void Camera::addElevation(float deltaDeg) {
+    elevation += deltaDeg;
+    elevation = glm::clamp(elevation, -89.0f, 89.0f);
+    updateFromOrbitAngles();
+}
+
+void Camera::updateFromFPSAngles() {
+    float y = glm::radians(yaw);
+    float p = glm::radians(pitch);
+
+    glm::vec3 dir;
+    dir.x = cos(p) * cos(y);
+    dir.y = sin(p);
+    dir.z = cos(p) * sin(y);
+
+    glm::vec3 forward = glm::normalize(dir);
+    look = eye + forward;
+
+    glm::vec3 worldUp(0, 1, 0);
+    glm::vec3 right   = glm::normalize(glm::cross(forward, worldUp));
+    up                = glm::normalize(glm::cross(right, forward));
+}
+
+void Camera::addYaw(float deltaDeg) {
+    yaw += deltaDeg;
+    if (yaw > 180.0f)  yaw -= 360.0f;
+    if (yaw < -180.0f) yaw += 360.0f;
+    updateFromFPSAngles();
+}
+
+void Camera::addPitch(float deltaDeg) {
+    pitch += deltaDeg;
+    pitch = glm::clamp(pitch, -89.0f, 89.0f);
+    updateFromFPSAngles();
+}
+
+void Camera::moveX(float delta)
+{
+    glm::vec3 forward, right, camUp;
+    getCameraBasis(eye, look, up, forward, right, camUp);
+
+    if (moveType == MoveType::Orbit) {
+        // pan em órbita: desloca centro e câmera juntos
+        eye  += right * delta;
+        look += right * delta;
+    } else { // FPS
+        // anda lateralmente mantendo direção
+        eye  += right * delta;
+        look += right * delta;
+    }
+}
+
+void Camera::moveY(float delta)
+{
+    glm::vec3 forward, right, camUp;
+    getCameraBasis(eye, look, up, forward, right, camUp);
+
+    if (moveType == MoveType::Orbit) {
+        eye  += camUp * delta;
+        look += camUp * delta;
+    } else { // FPS
+        eye  += camUp * delta;
+        look += camUp * delta;
+    }
+}
+
+void Camera::moveZ(float delta)
+{
+    glm::vec3 forward, right, camUp;
+    getCameraBasis(eye, look, up, forward, right, camUp);
+
+    if (moveType == MoveType::Orbit) {
+        // pan para frente/trás: move tudo na direção de forward
+        eye  += forward * delta;
+        look += forward * delta;
+    } else { // FPS
+        // anda na direção que está olhando
+        eye  += forward * delta;
+        look += forward * delta;
+    }
 }
