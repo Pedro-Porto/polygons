@@ -39,7 +39,7 @@ void Shape::rotateZ(float d) {
 }
 
 
-static Polyhedron buildCube() {
+static Polyhedron buildCube(Material material) {
     Polyhedron cube;
 
     // Definir vértices do cubo (-1 a 1)
@@ -103,14 +103,13 @@ static Polyhedron buildCube() {
         {{3, 2, 6, 7}}   // topo     (y = +1)
     };
 
-    // Material colorido para cada face
-    cube.material.color = {100, 150, 255, 255};  // azul claro
+    cube.material = material;  
 
     return cube;
 }
 
 
-static Polyhedron buildPyramid() {
+static Polyhedron buildPyramid(Material material) {
     Polyhedron p;
 
     // base quadrada + topo
@@ -130,12 +129,12 @@ static Polyhedron buildPyramid() {
 
     for (auto& v : p.verts) v.normal = glm::normalize(v.position);
 
-    p.material.color = {200, 150, 80, 255};
+    p.material = material;
     return p;
 }
 
 
-static Polyhedron buildCylinder(int slices) {
+static Polyhedron buildCylinder(int slices, Material material) {
     Polyhedron p;
     float step = 2 * M_PI / slices;
 
@@ -155,12 +154,12 @@ static Polyhedron buildCylinder(int slices) {
         p.faces.push_back({{i * 2, i2 * 2, i2 * 2 + 1, i * 2 + 1}});
     }
 
-    p.material.color = {180, 180, 180, 255};
+    p.material = material;
     return p;
 }
 
 
-static Polyhedron buildSphere(int stacks, int slices) {
+static Polyhedron buildSphere(int stacks, int slices, Material material) {
     Polyhedron p;
 
     for (int i = 0; i <= stacks; i++) {
@@ -191,40 +190,40 @@ static Polyhedron buildSphere(int stacks, int slices) {
         }
     }
 
-    p.material.color = {200, 80, 80, 255};
+    p.material = material;
     return p;
 }
 
 
-Shape& Shapes::createCube(const glm::vec3& center, float size) {
-    Shape obj(buildCube());
+Shape& Shapes::createCube(Material material, const glm::vec3& center, float size) {
+    Shape obj(buildCube(material));
     obj.scale(size * 0.5f);
     obj.translate(center);
     objects.push_back(obj);
     return objects.back();
 }
 
-Shape& Shapes::createPyramid(const glm::vec3& center, float size,
-                             float height) {
-    Shape obj(buildPyramid());
+Shape& Shapes::createPyramid(Material material, const glm::vec3& center,
+                                float size, float height) {
+    Shape obj(buildPyramid(material));
     obj.scale({size * 0.5f, height * 0.5f, size * 0.5f});
     obj.translate(center);
     objects.push_back(obj);
     return objects.back();
 }
 
-Shape& Shapes::createCylinder(const glm::vec3& c, float r, float h,
-                              int slices) {
-    Shape obj(buildCylinder(slices));
+Shape& Shapes::createCylinder(Material material, const glm::vec3& c, float r, float h,
+                                int slices) {
+    Shape obj(buildCylinder(slices, material));
     obj.scale({r, h * 0.5f, r});
     obj.translate(c);
     objects.push_back(obj);
     return objects.back();
 }
 
-Shape& Shapes::createSphere(const glm::vec3& c, float r, int stacks,
+Shape& Shapes::createSphere(Material material, const glm::vec3& c, float r, int stacks,
                             int slices) {
-    Shape obj(buildSphere(stacks, slices));
+    Shape obj(buildSphere(stacks, slices, material));
     obj.scale(r);
     obj.translate(c);
     objects.push_back(obj);
