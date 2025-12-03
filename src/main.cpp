@@ -11,6 +11,7 @@
 #include "../include/renderer.h"
 #include "../include/shapes.h"
 #include "../include/types.h"
+#include "../include/menu.h"
 
 int main() {
     GLApp app;
@@ -31,7 +32,7 @@ int main() {
     // Configurar Renderer (iluminação e shadi  ng)
     Renderer renderer;
 
-    Material material;
+    Material material = MATERIAL_RUBBER;
 
     shapes.createCube(material, {0, 0, 0}, 2.0f); //Criar cubo
     focal.createSphere(material, camera.look, 0.04f, 6, 6); //Criar look Point
@@ -44,6 +45,8 @@ int main() {
     double lastTime = glfwGetTime();
     int framesThisSecond = 0;
     int fps = 0;
+    MenuType menu_type = MenuType::Camera;
+    ShapeType shape_type = ShapeType::Cube;
 
     bool rmousepress = false;
 
@@ -60,79 +63,7 @@ int main() {
 
     app.setKeyCallback([&](int key, int, int action, int) {
         if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
-
-        const float moveStep = 0.2f;
-
-        switch (key) {
-            case GLFW_KEY_ESCAPE:
-                glfwSetWindowShouldClose(glfwGetCurrentContext(), 1);
-                break;
-
-            case GLFW_KEY_W:
-                camera.moveZ(moveStep);
-                break;
-            case GLFW_KEY_S:
-                camera.moveZ(-moveStep);
-                break;
-            case GLFW_KEY_A:
-                camera.moveX(-moveStep);
-                break;
-            case GLFW_KEY_D:
-                camera.moveX(moveStep);
-                break;
-            case GLFW_KEY_Q:
-                camera.moveY(moveStep);
-                break;
-            case GLFW_KEY_E:
-                camera.moveY(-moveStep);
-                break;
-            case GLFW_KEY_Z:
-                shapes.createSphere(material, camera.look,1.5,12,24);
-                break;
-            case GLFW_KEY_X:
-                shapes.createCylinder(material, camera.look,1.5,2.0,16);
-                break;
-            case GLFW_KEY_C:
-                shapes.createCube(material, camera.look,2.0);
-                break;
-            case GLFW_KEY_V:
-                shapes.createPyramid(material, camera.look,1.5,1.5);
-                break;
-            case GLFW_KEY_Y:
-                //select_color(material, fb);
-                break;
-            case GLFW_KEY_1:
-                currentMode = ShadingMode::Flat;
-                renderer.setMode(currentMode);
-                std::cout << "Modo: Flat Shading\n";
-                break;
-            case GLFW_KEY_2:
-                currentMode = ShadingMode::Gouraud;
-                renderer.setMode(currentMode);
-                std::cout << "Modo: Gouraud Shading\n";
-                break;
-            case GLFW_KEY_3:
-                currentMode = ShadingMode::Phong;
-                renderer.setMode(currentMode);
-                std::cout << "Modo: Phong Shading\n";
-                break;
-            case GLFW_KEY_7:
-                camera.type = Camera::ProjType::Perspective;
-                std::cout << "Camera Projection: Perspective\n";
-                break;
-            case GLFW_KEY_8:
-                camera.type = Camera::ProjType::Ortho;
-                std::cout << "Camera Projection: Orthogonal\n";
-                break;
-            case GLFW_KEY_9:
-                camera.moveType = Camera::MoveType::Fps;
-                std::cout << "Camera Mode: Fps\n";
-                break;
-            case GLFW_KEY_0:
-                camera.moveType = Camera::MoveType::Orbit;
-                std::cout << "Camera mode: Orbit\n";
-                break;
-        }
+        key_press(key,menu_type,shape_type,camera,material,currentMode,renderer);
     });
 
     app.setCursorPosCallback([&](double x, double y) {
@@ -160,7 +91,22 @@ int main() {
             }
             else rmousepress = false;
         }
-
+        if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+            switch (shape_type){
+                case ShapeType::Cube:
+                shapes.createCube(material, camera.look,2.0);
+                break;
+                case ShapeType::Sphere:
+                shapes.createSphere(material, camera.look,1.5,12,24);
+                break;
+                case ShapeType::Cylinder:
+                shapes.createCylinder(material, camera.look,1.5,2.0,16);
+                break;
+                case ShapeType::Pyramid:
+                shapes.createPyramid(material, camera.look,1.5,1.5);
+                break;
+            }
+        }
 
     });
 
@@ -255,34 +201,7 @@ int main() {
             }
         }
 
-        Color hudColor = {220, 220, 220, 255};
-
-        int fontScale = 2;
-        int lineH = 8 * fontScale + 4;  // altura da linha com margin
-
-        drawText(
-            fb, 10, 10,
-            std::string("PROJ: ") +
-                (camera.type == Camera::ProjType::Perspective ? "PERSPECTIVE"
-                                                              : "ORTHO"),
-            hudColor, fontScale);
-
-        drawText(fb, 10, 10 + lineH,
-                 std::string("SHADING: ") +
-                     (currentMode == ShadingMode::Flat      ? "FLAT"
-                      : currentMode == ShadingMode::Gouraud ? "GOURAUD"
-                                                            : "PHONG"),
-                 hudColor, fontScale);
-
-        drawText(
-            fb, 10, 10 + 2 * lineH,
-            std::string("CAMERA: ") +
-                (camera.moveType == Camera::MoveType::Orbit ? "ORBIT" : "FPS"),
-            hudColor, fontScale);
-
-        drawText(fb, 10, 10 + 3 * lineH,
-                 std::string("FPS: ") + std::to_string(fps), hudColor,
-                 fontScale);
+        menu(menu_type, shape_type, fb, camera, currentMode, material, fps);
 
                 
         app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
