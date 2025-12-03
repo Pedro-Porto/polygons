@@ -32,6 +32,8 @@ class Camera {
     Polygon projectAndClip(const Polyhedron& obj, const Face& face, int W,
                            int H) const;
 
+    bool projectLine(const Line3D& l3, Line2D& out, int W, int H) const;
+
     void addX(float deltaDeg) {
         if (moveType == MoveType::Orbit)
             addAzimuth(deltaDeg);

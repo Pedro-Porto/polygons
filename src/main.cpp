@@ -1,16 +1,19 @@
 #include <cmath>
 #include <iostream>
-#include <vector>
 #include <string>
+#include <vector>
 
+#include "../include/bresenham.h"
 #include "../include/camera.h"
 #include "../include/fill_polygon.h"
 #include "../include/font8x8.h"
 #include "../include/framebuffer.h"
 #include "../include/gl_app.h"
+#include "../include/lines.h"
 #include "../include/renderer.h"
 #include "../include/shapes.h"
 #include "../include/types.h"
+#include <clip_line.h>
 
 int main() {
     GLApp app;
@@ -25,7 +28,8 @@ int main() {
 
     // Criar Figuras
     Shapes shapes;
-    Shapes focal;
+    Lines lines;
+    Lines lookGizmo;
     // Configurar câmera
     Camera camera;
     // Configurar Renderer (iluminação e shadi  ng)
@@ -33,11 +37,16 @@ int main() {
 
     Material material;
 
-    shapes.createCube(material, {0, 0, 0}, 2.0f); //Criar cubo
-    focal.createSphere(material, camera.look, 0.04f, 6, 6); //Criar look Point
+    shapes.createCube(material, {0, 0, 0}, 2.0f);  // Criar cubo
 
+    lines.add({-5, 0, 0}, {5, 0, 0}, {255, 0, 0, 255}, 1);  // eixo X
+    lines.add({0, -5, 0}, {0, 5, 0}, {0, 255, 0, 255}, 1);  // eixo Y
+    lines.add({0, 0, -5}, {0, 0, 5}, {0, 0, 255, 255}, 1);  // eixo Z
 
-    
+    float g = 0.5f;  // tamanho do gizmo
+    lookGizmo.add({-g, 0, 0}, {g, 0, 0}, {255, 0, 0, 255}, 1);  // X local
+    lookGizmo.add({0, -g, 0}, {0, g, 0}, {0, 255, 0, 255}, 1);  // Y local
+    lookGizmo.add({0, 0, -g}, {0, 0, g}, {0, 0, 255, 255}, 1);  // Z local
 
     initFont8x8();
 
@@ -87,19 +96,19 @@ int main() {
                 camera.moveY(-moveStep);
                 break;
             case GLFW_KEY_Z:
-                shapes.createSphere(material, camera.look,1.5,12,24);
+                shapes.createSphere(material, camera.look, 1.5, 12, 24);
                 break;
             case GLFW_KEY_X:
-                shapes.createCylinder(material, camera.look,1.5,2.0,16);
+                shapes.createCylinder(material, camera.look, 1.5, 2.0, 16);
                 break;
             case GLFW_KEY_C:
-                shapes.createCube(material, camera.look,2.0);
+                shapes.createCube(material, camera.look, 2.0);
                 break;
             case GLFW_KEY_V:
-                shapes.createPyramid(material, camera.look,1.5,1.5);
+                shapes.createPyramid(material, camera.look, 1.5, 1.5);
                 break;
             case GLFW_KEY_Y:
-                //select_color(material, fb);
+                // select_color(material, fb);
                 break;
             case GLFW_KEY_1:
                 currentMode = ShadingMode::Flat;
@@ -142,7 +151,7 @@ int main() {
         lastY = y;
 
         const float sensitivity = 0.5f;
-        if(rmousepress){
+        if (rmousepress) {
             camera.addX(dx * sensitivity);   // esquerda/direita
             camera.addY(-dy * sensitivity);  // cima/baixo
         }
@@ -153,15 +162,13 @@ int main() {
         camera.addOrbitDistance(-yoffset * zoomStep);
     });
 
-    app.setMouseButtonCallback([&](int button, int action, int mods){
-        if(button == GLFW_MOUSE_BUTTON_RIGHT){
-            if(action == GLFW_PRESS){
+    app.setMouseButtonCallback([&](int button, int action, int mods) {
+        if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+            if (action == GLFW_PRESS) {
                 rmousepress = true;
-            }
-            else rmousepress = false;
+            } else
+                rmousepress = false;
         }
-
-
     });
 
     while (!glfwWindowShouldClose(app.window())) {
@@ -188,7 +195,6 @@ int main() {
 
         // atualizar posição da câmera no renderer (para Phong)
         renderer.setCameraEye(camera.eye);
-        focal.objects[0].translate(camera.look-focal.objects[0].mesh.verts[0].position);
 
         for (auto& s : shapes.objects) {
             for (const auto& face : s.mesh.faces) {
@@ -228,30 +234,25 @@ int main() {
             }
         }
 
-        //Desenhar ponto de visagem da camera
-        for (auto& s : focal.objects) {
-            for (const auto& face : s.mesh.faces) {
-                Polygon poly2D = camera.projectAndClip(s.mesh, face, w, h);
+        // desenha as linhas
+        for (const auto& l3 : lines.objects) {
+            Line2D l2;
 
-                if (poly2D.verts.size() >= 3) {
-                    // calcular iluminação baseada no modo de shading
-                        // FLAT: calcular intensidade uma vez por face usando o
-                        // centro
-                        glm::vec3 faceCenter(0);
-                        glm::vec3 faceNormal(0);
-                        for (const auto& v : poly2D.verts) {
-                            faceCenter += glm::vec3(v.x, v.y, v.z);
-                            faceNormal += v.normal;
-                        }
-                        faceCenter /= float(poly2D.verts.size());
-                        faceNormal = glm::normalize(faceNormal);
+            if (!camera.projectLine(l3, l2, w, h)) continue;
 
-                        float intensity = renderer.phong(faceCenter, faceNormal,
-                                                         *poly2D.material);
-                        renderer.setFlatIntensity(intensity);
+            if (!clipLineCohenSutherland(l2, 0, 0, w - 1, h - 1)) continue;
 
-                    fill_polygon(poly2D, fb, renderer);
-                }
+            plot_line(l2, fb);
+        }
+
+        for (const auto& base : lookGizmo.objects) {
+            Line3D worldLine = base;
+            worldLine.p1 += camera.look;
+            worldLine.p2 += camera.look;
+
+            Line2D l2;
+            if (camera.projectLine(worldLine, l2, w, h)) {
+                plot_line(l2, fb);
             }
         }
 
@@ -284,7 +285,6 @@ int main() {
                  std::string("FPS: ") + std::to_string(fps), hudColor,
                  fontScale);
 
-                
         app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
 
         app.endFrame();
