@@ -77,4 +77,16 @@ struct Line2D {
     int width = 1;
 };
 enum class ShapeType{Cube, Cylinder, Sphere, Pyramid};
-enum class MenuType{Camera, Color, Shape, Materials, Extrusion};
+enum class MenuType{Camera, Color, Shape, Materials, Extrusion, Transform};
+
+enum class TransformMode { None, Translate, Rotate, Scale };
+
+struct TransformState {
+    TransformMode mode = TransformMode::None;
+    int selectedShapeIndex = -1;
+    glm::vec3 originalPosition{0};
+    Color originalColor{255, 255, 255, 255};
+    float lastAngleX = 0.0f;
+    float lastAngleY = 0.0f;
+    MenuType previousMenu = MenuType::Camera;
+};

@@ -19,8 +19,6 @@
 #include "../include/types.h"
 #include "../include/menu.h"
 
-// --------- helper: desenhar linha 3D -----
-
 static void drawLine3D(const Line3D& l3, const Camera& camera, Framebuffer& fb,
                        int W, int H) {
     Line2D l2;
@@ -48,7 +46,7 @@ int main() {
     Lines lookGizmo;
     // Configurar câmera
     Camera camera;
-    // Configurar Renderer (iluminação e shadi  ng)
+    // Configurar Renderer (iluminação e shading)
     Renderer renderer;
 
     Material material = MATERIAL_RUBBER;
@@ -87,12 +85,13 @@ int main() {
 
     // ===== estado para desenho/extrusão =====
     ExtrusionState extrusionState;
+    TransformState transformState;
     double mouseX = 0.0, mouseY = 0.0;
 
     app.setKeyCallback([&](int key, int, int action, int) {
         if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
 
-        key_press(key,menu_type,shape_type,camera,material,currentMode,renderer,extrusionState,shapes);
+        key_press(key,menu_type,shape_type,camera,material,currentMode,renderer,extrusionState,shapes,transformState);
     });
 
     app.setCursorPosCallback([&](double x, double y) {
@@ -108,6 +107,32 @@ int main() {
         if (rmousepress) {
             camera.addX(dx * sensitivity);   // esquerda/direita
             camera.addY(-dy * sensitivity);  // cima/baixo
+        }
+        
+        // Rotação no modo Transform - girar em torno do centro do objeto
+        if (menu_type == MenuType::Transform && 
+            transformState.mode == TransformMode::Rotate &&
+            transformState.selectedShapeIndex >= 0 && 
+            transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            
+            float rotSensitivity = 0.5f;
+            float angleY = dx * rotSensitivity;
+            float angleX = -dy * rotSensitivity;
+            
+            auto& selectedShape = shapes.objects[transformState.selectedShapeIndex];
+            
+            // Calcular centro do objeto
+            glm::vec3 center(0);
+            for (const auto& vert : selectedShape.mesh.verts) {
+                center += vert.position;
+            }
+            center /= float(selectedShape.mesh.verts.size());
+            
+            // Transladar para origem, rotacionar, e transladar de volta
+            selectedShape.translate(-center);
+            selectedShape.rotateY(angleY);
+            selectedShape.rotateX(angleX);
+            selectedShape.translate(center);
         }
     });
 
@@ -181,9 +206,42 @@ int main() {
             updateExtrusionPreview(extrusionState, mouseX, mouseY, w, h,
                                    camera);
         }
+        
+        // Atualizar translação no modo Transform
+        if (menu_type == MenuType::Transform && 
+            transformState.selectedShapeIndex >= 0 && 
+            transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            
+            if (transformState.mode == TransformMode::Translate) {
+                // Calcular a posição atual do centro do shape
+                glm::vec3 currentCenter(0);
+                auto& selectedShape = shapes.objects[transformState.selectedShapeIndex];
+                for (const auto& vert : selectedShape.mesh.verts) {
+                    currentCenter += vert.position;
+                }
+                currentCenter /= float(selectedShape.mesh.verts.size());
+                
+                // Transladar para acompanhar o look da câmera
+                glm::vec3 delta = camera.look - currentCenter;
+                selectedShape.translate(delta);
+            }
+        }
 
         // desenhar sólidos
-        for (auto& s : shapes.objects) {
+        for (int i = 0; i < (int)shapes.objects.size(); ++i) {
+            auto& s = shapes.objects[i];
+            
+            // Salvar material original
+            Material originalMaterial = s.mesh.material;
+            
+            // Aplicar highlight no shape selecionado (amarelo/laranja brilhante)
+            bool isSelected = (menu_type == MenuType::Transform && i == transformState.selectedShapeIndex);
+            if (isSelected) {
+                // Misturar cor original com amarelo forte para highlight visível
+                s.mesh.material.color.r = std::min(255, (int)s.mesh.material.color.r + 150);
+                s.mesh.material.color.g = std::min(255, (int)s.mesh.material.color.g + 150);
+                s.mesh.material.color.b = std::max(0, (int)s.mesh.material.color.b - 50); // Reduzir azul para dar tom amarelado
+            }
             for (const auto& face : s.mesh.faces) {
                 Polygon poly2D = camera.projectAndClip(s.mesh, face, w, h);
 
@@ -213,6 +271,11 @@ int main() {
                     fill_polygon(poly2D, fb, renderer);
                 }
             }
+            
+            // Restaurar material original após desenho
+            if (isSelected) {
+                s.mesh.material = originalMaterial;
+            }
         }
 
         // desenha as linhas dos eixos globais
@@ -226,15 +289,36 @@ int main() {
             plot_line(l2, fb);
         }
 
-        // gizmo do look
-        for (const auto& base : lookGizmo.objects) {
-            Line3D worldLine = base;
-            worldLine.p1 += camera.look;
-            worldLine.p2 += camera.look;
+        // gizmo do look (só desenha no modo Orbit, não no FPS)
+        if (camera.moveType == Camera::MoveType::Orbit) {
+            glm::vec3 gizmoPosition = camera.look;
+            
+            // No modo Transform, o gizmo está na posição do look (que já foi movido pelo TAB)
+            if (menu_type == MenuType::Transform && 
+                transformState.selectedShapeIndex >= 0 && 
+                transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+                // O gizmo usa o camera.look que já foi atualizado quando pressionou TAB
+                gizmoPosition = camera.look;
+            }
+            
+            float gizmoScale = 1.0f;
+            int gizmoWidth = 1;
+            if (menu_type == MenuType::Transform) {
+                gizmoScale = (transformState.mode == TransformMode::Translate) ? 2.5f : 1.5f;
+                gizmoWidth = (transformState.mode == TransformMode::Translate) ? 3 : 2;
+            }
+            
+            for (const auto& base : lookGizmo.objects) {
+                Line3D worldLine = base;
+                worldLine.p1 = worldLine.p1 * gizmoScale + gizmoPosition;
+                worldLine.p2 = worldLine.p2 * gizmoScale + gizmoPosition;
+                worldLine.width = gizmoWidth;
 
-            Line2D l2;
-            if (camera.projectLine(worldLine, l2, w, h)) {
-                plot_line(l2, fb);
+                Line2D l2;
+                if (camera.projectLine(worldLine, l2, w, h)) {
+                    l2.width = gizmoWidth;
+                    plot_line(l2, fb);
+                }
             }
         }
 
@@ -305,7 +389,7 @@ int main() {
             }
         }
 
-        menu(menu_type, shape_type, fb, camera, currentMode, material, fps, extrusionState);
+        menu(menu_type, shape_type, fb, camera, currentMode, material, fps, extrusionState, transformState, shapes.objects.size());
 
         app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
 

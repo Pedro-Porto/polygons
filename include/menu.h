@@ -47,7 +47,8 @@ void camera_menu(Framebuffer& fb, Camera camera, ShadingMode currentMode, int fp
              fontScale);
     
     drawText(fb, 10, 10 + 5 * lineH, "C: COR   F: FORMA   M: MATERIAL", COLOR_HUD, fontScale);
-    drawText(fb, 10, 10 + 6 * lineH, "G: EXTRUDE   ESC: SAIR", COLOR_HUD, fontScale);
+    drawText(fb, 10, 10 + 6 * lineH, "G: EXTRUDE   H: TRANSFORM", COLOR_HUD, fontScale);
+    drawText(fb, 10, 10 + 7 * lineH, "B: RESET GIZMO   ESC: SAIR", COLOR_HUD, fontScale);
 }
 
 void color_menu(Framebuffer& fb, Material& material, int fontScale, int lineH){
@@ -196,7 +197,33 @@ void extrusion_menu(Framebuffer& fb, const ExtrusionState& extrusionState, int f
     }
 }
 
-void menu(MenuType menu_type, ShapeType shape_type, Framebuffer& fb, Camera camera, ShadingMode currentMode, Material material, int fps, const ExtrusionState& extrusionState){
+void transform_menu(Framebuffer& fb, const TransformState& transformState, int totalShapes, int fontScale, int lineH){
+    drawText(fb, 10, 10, "=== MODO TRANSFORM ===", COLOR_HUD, fontScale);
+    
+    std::string shapeInfo = std::string("SHAPE: ") + 
+                           (transformState.selectedShapeIndex >= 0 ? 
+                            std::to_string(transformState.selectedShapeIndex + 1) + "/" + std::to_string(totalShapes) :
+                            "NENHUM");
+    drawText(fb, 10, 10 + lineH, shapeInfo, COLOR_HUD, fontScale);
+    
+    drawText(fb, 10, 10 + 2*lineH, "TAB: PROXIMO SHAPE", COLOR_HUD, fontScale);
+    drawText(fb, 10, 10 + 3*lineH, "T: TRANSLACAO   R: ROTACAO", COLOR_HUD, fontScale);
+    drawText(fb, 10, 10 + 4*lineH, "Z/X: ESCALA -/+   DEL: APAGAR", COLOR_HUD, fontScale);
+    drawText(fb, 10, 10 + 5*lineH, "C: COR   M: MATERIAL", COLOR_HUD, fontScale);
+    drawText(fb, 10, 10 + 6*lineH, "ESC: VOLTAR", COLOR_HUD, fontScale);
+    
+    if (transformState.mode == TransformMode::Translate) {
+        drawText(fb, 10, 10 + 8*lineH, "MODO: TRANSLACAO", COLOR_HUD, fontScale);
+        drawText(fb, 10, 10 + 9*lineH, "SPACE: CONFIRMAR", COLOR_HUD, fontScale);
+    } else if (transformState.mode == TransformMode::Rotate) {
+        drawText(fb, 10, 10 + 8*lineH, "MODO: ROTACAO", COLOR_HUD, fontScale);
+        drawText(fb, 10, 10 + 9*lineH, "MOUSE: GIRAR   SPACE: CONFIRMAR", COLOR_HUD, fontScale);
+    } else if (transformState.mode == TransformMode::Scale) {
+        drawText(fb, 10, 10 + 8*lineH, "MODO: ESCALA", COLOR_HUD, fontScale);
+    }
+}
+
+void menu(MenuType menu_type, ShapeType shape_type, Framebuffer& fb, Camera camera, ShadingMode currentMode, Material material, int fps, const ExtrusionState& extrusionState, const TransformState& transformState, int totalShapes){
 
     int fontScale = 2;
     int lineH = 8 * fontScale + 4; // altura da linha com margin
@@ -217,6 +244,9 @@ void menu(MenuType menu_type, ShapeType shape_type, Framebuffer& fb, Camera came
         break;
         case MenuType::Extrusion:
         extrusion_menu(fb, extrusionState, fontScale, lineH);
+        break;
+        case MenuType::Transform:
+        transform_menu(fb, transformState, totalShapes, fontScale, lineH);
         break;
     }
 }
@@ -265,24 +295,121 @@ void extrusion_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &
     }
 }
 
-void camera_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep)
+void transform_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep, TransformState &transformState, Shapes &shapes)
 {
     switch (key)
     {
     case GLFW_KEY_ESCAPE:
-        glfwSetWindowShouldClose(glfwGetCurrentContext(), 1);
+        if (transformState.mode != TransformMode::None) {
+            // Cancela a transformação atual
+            transformState.mode = TransformMode::None;
+        } else {
+            menu_type = MenuType::Camera;
+        }
         break;
     case GLFW_KEY_C:
+        transformState.previousMenu = MenuType::Transform;
         menu_type = MenuType::Color;
         break;
-    case GLFW_KEY_F:
-        menu_type = MenuType::Shape;
-        break;
     case GLFW_KEY_M:
+        transformState.previousMenu = MenuType::Transform;
         menu_type = MenuType::Materials;
         break;
-    case GLFW_KEY_G:
-        menu_type = MenuType::Extrusion;
+    case GLFW_KEY_TAB:
+        // Seleciona o próximo shape
+        if (!shapes.objects.empty()) {
+            if (transformState.selectedShapeIndex < 0) {
+                transformState.selectedShapeIndex = 0;
+            } else {
+                transformState.selectedShapeIndex = (transformState.selectedShapeIndex + 1) % shapes.objects.size();
+            }
+            
+            // Mover o look da câmera para o centro do objeto selecionado
+            auto& selectedShape = shapes.objects[transformState.selectedShapeIndex];
+            glm::vec3 center(0);
+            for (const auto& vert : selectedShape.mesh.verts) {
+                center += vert.position;
+            }
+            if (!selectedShape.mesh.verts.empty()) {
+                center /= float(selectedShape.mesh.verts.size());
+                camera.look = center;
+                
+                // Forçar atualização da posição da câmera em modo Orbit
+                // Isso recalcula eye baseado no novo look
+                camera.addOrbitDistance(0);
+            }
+            
+            std::cout << "Shape selecionado: " << (transformState.selectedShapeIndex + 1) << "/" << shapes.objects.size() << " - Camera look movido para (" << camera.look.x << ", " << camera.look.y << ", " << camera.look.z << ")\n";
+        } else {
+            std::cout << "Nenhum shape disponível para selecionar\n";
+        }
+        break;
+    case GLFW_KEY_T:
+        if (transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            transformState.mode = TransformMode::Translate;
+            // Salvar posição original para possível cancelamento
+            std::cout << "Modo: Translação\n";
+        }
+        break;
+    case GLFW_KEY_R:
+        if (transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            transformState.mode = TransformMode::Rotate;
+            transformState.lastAngleX = 0.0f;
+            transformState.lastAngleY = 0.0f;
+            std::cout << "Modo: Rotação\n";
+        }
+        break;
+    case GLFW_KEY_Z:
+        // Diminuir escala
+        if (transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].scale(0.9f);
+            std::cout << "Escala diminuída\n";
+        }
+        break;
+    case GLFW_KEY_X:
+        // Aumentar escala
+        if (transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].scale(1.1f);
+            std::cout << "Escala aumentada\n";
+        }
+        break;
+    case GLFW_KEY_SPACE:
+        if (transformState.mode == TransformMode::Translate || transformState.mode == TransformMode::Rotate) {
+            transformState.mode = TransformMode::None;
+            std::cout << "Transformação confirmada\n";
+        }
+        break;
+    case GLFW_KEY_DELETE:
+    case GLFW_KEY_BACKSPACE:
+        // Deletar o objeto selecionado
+        if (transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            std::cout << "Deletando shape " << (transformState.selectedShapeIndex + 1) << "\n";
+            shapes.objects.erase(shapes.objects.begin() + transformState.selectedShapeIndex);
+            
+            // Ajustar o índice selecionado
+            if (shapes.objects.empty()) {
+                transformState.selectedShapeIndex = -1;
+                std::cout << "Nenhum shape restante\n";
+            } else {
+                // Se deletou o último, volta para o anterior
+                if (transformState.selectedShapeIndex >= (int)shapes.objects.size()) {
+                    transformState.selectedShapeIndex = shapes.objects.size() - 1;
+                }
+                std::cout << "Shape " << (transformState.selectedShapeIndex + 1) << " agora selecionado\n";
+                
+                // Mover câmera para o novo shape selecionado
+                auto& selectedShape = shapes.objects[transformState.selectedShapeIndex];
+                glm::vec3 center(0);
+                for (const auto& vert : selectedShape.mesh.verts) {
+                    center += vert.position;
+                }
+                if (!selectedShape.mesh.verts.empty()) {
+                    center /= float(selectedShape.mesh.verts.size());
+                    camera.look = center;
+                    camera.addOrbitDistance(0);
+                }
+            }
+        }
         break;
     case GLFW_KEY_W:
         camera.moveZ(moveStep);
@@ -301,6 +428,65 @@ void camera_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &cam
         break;
     case GLFW_KEY_E:
         camera.moveY(-moveStep);
+        break;
+    }
+}
+
+void camera_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep, TransformState &transformState, Shapes &shapes)
+{
+    switch (key)
+    {
+    case GLFW_KEY_ESCAPE:
+        glfwSetWindowShouldClose(glfwGetCurrentContext(), 1);
+        break;
+    case GLFW_KEY_C:
+        menu_type = MenuType::Color;
+        break;
+    case GLFW_KEY_F:
+        menu_type = MenuType::Shape;
+        break;
+    case GLFW_KEY_M:
+        menu_type = MenuType::Materials;
+        break;
+    case GLFW_KEY_G:
+        menu_type = MenuType::Extrusion;
+        break;
+    case GLFW_KEY_H:
+        menu_type = MenuType::Transform;
+        // Inicializar com o primeiro shape se houver algum
+        if (!shapes.objects.empty()) {
+            if (transformState.selectedShapeIndex < 0) {
+                transformState.selectedShapeIndex = 0;
+                std::cout << "Transform mode iniciado - Shape 0 selecionado\n";
+            }
+            std::cout << "Entrando no modo Transform - Shapes disponíveis: " << shapes.objects.size() << ", Selecionado: " << transformState.selectedShapeIndex << "\n";
+        } else {
+            std::cout << "Transform mode - NENHUM shape disponível!\n";
+        }
+        break;
+    case GLFW_KEY_W:
+        camera.moveZ(moveStep);
+        break;
+    case GLFW_KEY_S:
+        camera.moveZ(-moveStep);
+        break;
+    case GLFW_KEY_A:
+        camera.moveX(-moveStep);
+        break;
+    case GLFW_KEY_D:
+        camera.moveX(moveStep);
+        break;
+    case GLFW_KEY_Q:
+        camera.moveY(moveStep);
+        break;
+    case GLFW_KEY_E:
+        camera.moveY(-moveStep);
+        break;
+    case GLFW_KEY_B:
+        camera.look = glm::vec3(0, 0, 0);
+        // Forçar atualização da câmera
+        camera.addOrbitDistance(0);
+        std::cout << "Gizmo resetado para o centro (0,0,0)\n";
         break;
     case GLFW_KEY_1:
         currentMode = ShadingMode::Flat;
@@ -340,12 +526,19 @@ void camera_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &cam
     }
 }
 
-void color_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep)
+void color_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep, TransformState &transformState, Shapes &shapes, MenuType previousMenu)
 {
+    static bool debugPrinted = false;
+    if (!debugPrinted && previousMenu == MenuType::Transform) {
+        std::cout << "Color menu - previousMenu: Transform, selectedShape: " << transformState.selectedShapeIndex << "\n";
+        debugPrinted = true;
+    }
+    
     switch (key)
     {
     case GLFW_KEY_ESCAPE:
-        menu_type = MenuType::Camera;
+        menu_type = previousMenu;
+        debugPrinted = false;
         break;
     case GLFW_KEY_C:
         menu_type = MenuType::Color;
@@ -376,33 +569,64 @@ void color_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &came
         break;
     case GLFW_KEY_1:
         material.color = COLOR_BLACK;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_BLACK;
+            std::cout << "Cor PRETO aplicada ao shape " << transformState.selectedShapeIndex << "\n";
+        }
         break;
     case GLFW_KEY_2:
         material.color = COLOR_WHITE;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_WHITE;
+        }
         break;
     case GLFW_KEY_3:
         material.color = COLOR_RED;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_RED;
+        }
         break;
     case GLFW_KEY_4:
         material.color = COLOR_GREEN;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_GREEN;
+        }
         break;
     case GLFW_KEY_5:
         material.color = COLOR_BLUE;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_BLUE;
+        }
         break;
     case GLFW_KEY_6:
         material.color = COLOR_ORANGE;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_ORANGE;
+        }
         break;
     case GLFW_KEY_7:
         material.color = COLOR_YELLOW;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_YELLOW;
+        }
         break;
     case GLFW_KEY_8:
         material.color = COLOR_INDIGO;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_INDIGO;
+        }
         break;
     case GLFW_KEY_9:
         material.color = COLOR_CYAN;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_CYAN;
+        }
         break;
     case GLFW_KEY_0:
         material.color = COLOR_PINK;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.color = COLOR_PINK;
+        }
         break;
     }
 }
@@ -456,13 +680,13 @@ void shape_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &came
     }
 }
 
-void materials_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep)
+void materials_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &camera, Material &material, ShadingMode &currentMode, Renderer &renderer, float moveStep, TransformState &transformState, Shapes &shapes, MenuType previousMenu)
 {
     Material Rubber = MATERIAL_RUBBER, Plastic = MATERIAL_PLASTIC, Metal = MATERIAL_METAL, Stone = MATERIAL_STONE;
     switch (key)
     {
     case GLFW_KEY_ESCAPE:
-        menu_type = MenuType::Camera;
+        menu_type = previousMenu;
         break;
     case GLFW_KEY_C:
         menu_type = MenuType::Color;
@@ -496,47 +720,77 @@ void materials_key(int key, MenuType &menu_type, ShapeType &shape_type, Camera &
         material.kd = Rubber.kd;
         material.ks = Rubber.ks;
         material.shininess = Rubber.shininess;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ka = Rubber.ka;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.kd = Rubber.kd;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ks = Rubber.ks;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.shininess = Rubber.shininess;
+        }
         break;
     case GLFW_KEY_2:
         material.ka = Plastic.ka;
         material.kd = Plastic.kd;
         material.ks = Plastic.ks;
         material.shininess = Plastic.shininess;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ka = Plastic.ka;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.kd = Plastic.kd;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ks = Plastic.ks;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.shininess = Plastic.shininess;
+        }
         break;
     case GLFW_KEY_3:
         material.ka = Metal.ka;
         material.kd = Metal.kd;
         material.ks = Metal.ks;
         material.shininess = Metal.shininess;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ka = Metal.ka;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.kd = Metal.kd;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ks = Metal.ks;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.shininess = Metal.shininess;
+        }
         break;
     case GLFW_KEY_4:
         material.ka = Stone.ka;
         material.kd = Stone.kd;
         material.ks = Stone.ks;
         material.shininess = Stone.shininess;
+        if (previousMenu == MenuType::Transform && transformState.selectedShapeIndex >= 0 && transformState.selectedShapeIndex < (int)shapes.objects.size()) {
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ka = Stone.ka;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.kd = Stone.kd;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.ks = Stone.ks;
+            shapes.objects[transformState.selectedShapeIndex].mesh.material.shininess = Stone.shininess;
+        }
         break;
     }
 }
 
-void key_press(int key, MenuType& menu_type, ShapeType& shape_type, Camera& camera, Material& material, ShadingMode& currentMode, Renderer& renderer, ExtrusionState& extrusionState, Shapes& shapes){
+void key_press(int key, MenuType& menu_type, ShapeType& shape_type, Camera& camera, Material& material, ShadingMode& currentMode, Renderer& renderer, ExtrusionState& extrusionState, Shapes& shapes, TransformState& transformState){
     const float moveStep = 0.2f;
+    
+    // Guardar menu anterior antes de mudar
+    MenuType previousMenu = transformState.previousMenu;
 
     switch (menu_type)
     {
     case MenuType::Camera:
-        camera_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep);
+        camera_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep,transformState,shapes);
         break;
     case MenuType::Color:
-        color_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep);
+        color_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep,transformState,shapes,previousMenu);
         break;
     case MenuType::Shape:
         shape_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep);
         break;
     case MenuType::Materials:
-        materials_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep);
+        materials_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep,transformState,shapes,previousMenu);
         break;
     case MenuType::Extrusion:
         extrusion_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep,extrusionState,shapes);
+        break;
+    case MenuType::Transform:
+        transform_key(key,menu_type,shape_type,camera,material,currentMode,renderer,moveStep,transformState,shapes);
         break;
     }
 
