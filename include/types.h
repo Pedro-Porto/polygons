@@ -3,6 +3,23 @@
 #include <glm/vec3.hpp>
 #include <vector>
 
+#define COLOR_BLACK {0,0,0,255}
+#define COLOR_WHITE {255,255,255,255}
+#define COLOR_RED {255,0,0,255}
+#define COLOR_GREEN {0,255,0,255}
+#define COLOR_BLUE {0,0,255,255}
+#define COLOR_ORANGE {255,165,0,255}
+#define COLOR_YELLOW {255,255,0,255}
+#define COLOR_INDIGO {75,0,130,255}
+#define COLOR_CYAN {0,255,255,255}
+#define COLOR_PINK {255,51,255,255}
+#define COLOR_HUD {220, 220, 220, 255}
+
+#define MATERIAL_RUBBER {COLOR_WHITE, 0.05, 0.5, 0.7, 10.24}
+#define MATERIAL_PLASTIC {COLOR_WHITE, 0.00, 0.5, 0.7, 32}
+#define MATERIAL_METAL {COLOR_WHITE, 0.2, 0.7, 0.6, 51.2}
+#define MATERIAL_STONE {COLOR_WHITE, 0.25, 0.95, 0.3, 11.24}
+
 struct Color {
     uint8_t r, g, b, a;
 };
@@ -59,3 +76,5 @@ struct Line2D {
     Color color;
     int width = 1;
 };
+enum class ShapeType{Cube, Cylinder, Sphere, Pyramid};
+enum class MenuType{Camera, Color, Shape, Materials};

@@ -17,6 +17,7 @@
 #include "../include/renderer.h"
 #include "../include/shapes.h"
 #include "../include/types.h"
+#include "../include/menu.h"
 
 // --------- helper: desenhar linha 3D -----
 
@@ -50,7 +51,7 @@ int main() {
     // Configurar Renderer (iluminação e shadi  ng)
     Renderer renderer;
 
-    Material material;
+    Material material = MATERIAL_RUBBER;
 
     shapes.createCube(material, {0, 0, 0}, 2.0f);  // Criar cubo
 
@@ -68,6 +69,8 @@ int main() {
     double lastTime = glfwGetTime();
     int framesThisSecond = 0;
     int fps = 0;
+    MenuType menu_type = MenuType::Camera;
+    ShapeType shape_type = ShapeType::Cube;
 
     bool rmousepress = false;
 
@@ -201,6 +204,7 @@ int main() {
                 }
                 break;
         }
+        key_press(key,menu_type,shape_type,camera,material,currentMode,renderer);
     });
 
     app.setCursorPosCallback([&](double x, double y) {
@@ -240,6 +244,23 @@ int main() {
                           << extrusionState.polygon3D.size() << " total)\n";
             }
         }
+        if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+            switch (shape_type){
+                case ShapeType::Cube:
+                shapes.createCube(material, camera.look,2.0);
+                break;
+                case ShapeType::Sphere:
+                shapes.createSphere(material, camera.look,1.5,12,24);
+                break;
+                case ShapeType::Cylinder:
+                shapes.createCylinder(material, camera.look,1.5,2.0,16);
+                break;
+                case ShapeType::Pyramid:
+                shapes.createPyramid(material, camera.look,1.5,1.5);
+                break;
+            }
+        }
+
     });
 
     while (!glfwWindowShouldClose(app.window())) {
@@ -396,34 +417,7 @@ int main() {
             }
         }
 
-        Color hudColor = {220, 220, 220, 255};
-
-        int fontScale = 2;
-        int lineH = 8 * fontScale + 4;  // altura da linha com margin
-
-        drawText(
-            fb, 10, 10,
-            std::string("PROJ: ") +
-                (camera.type == Camera::ProjType::Perspective ? "PERSPECTIVE"
-                                                              : "ORTHO"),
-            hudColor, fontScale);
-
-        drawText(fb, 10, 10 + lineH,
-                 std::string("SHADING: ") +
-                     (currentMode == ShadingMode::Flat      ? "FLAT"
-                      : currentMode == ShadingMode::Gouraud ? "GOURAUD"
-                                                            : "PHONG"),
-                 hudColor, fontScale);
-
-        drawText(
-            fb, 10, 10 + 2 * lineH,
-            std::string("CAMERA: ") +
-                (camera.moveType == Camera::MoveType::Orbit ? "ORBIT" : "FPS"),
-            hudColor, fontScale);
-
-        drawText(fb, 10, 10 + 3 * lineH,
-                 std::string("FPS: ") + std::to_string(fps), hudColor,
-                 fontScale);
+        menu(menu_type, shape_type, fb, camera, currentMode, material, fps);
 
         int hudY = 10 + 4 * lineH;
         if (extrusionState.mode == EditMode::None) {
