@@ -1,7 +1,10 @@
 #include "../include/shapes.h"
-
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 
 Shape::Shape(const Polyhedron& p) : mesh(p) {}

@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <string>
 
 #include "../include/camera.h"
 #include "../include/fill_polygon.h"
