@@ -1,10 +1,14 @@
+#include <clip_line.h>
+
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #include "../include/bresenham.h"
 #include "../include/camera.h"
+#include "../include/extrusion.h"
 #include "../include/fill_polygon.h"
 #include "../include/font8x8.h"
 #include "../include/framebuffer.h"
@@ -13,7 +17,18 @@
 #include "../include/renderer.h"
 #include "../include/shapes.h"
 #include "../include/types.h"
-#include <clip_line.h>
+
+// --------- helper: desenhar linha 3D -----
+
+static void drawLine3D(const Line3D& l3, const Camera& camera, Framebuffer& fb,
+                       int W, int H) {
+    Line2D l2;
+    if (!camera.projectLine(l3, l2, W, H)) return;
+    if (!clipLineCohenSutherland(l2, 0, 0, W - 1, H - 1)) return;
+    plot_line(l2, fb);
+}
+
+// ================== MAIN ==================
 
 int main() {
     GLApp app;
@@ -66,6 +81,10 @@ int main() {
     renderer.setMode(currentMode);
 
     float lastX = 0.0f, lastY = 0.0f;
+
+    // ===== estado para desenho/extrusão =====
+    ExtrusionState extrusionState;
+    double mouseX = 0.0, mouseY = 0.0;
 
     app.setKeyCallback([&](int key, int, int action, int) {
         if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
@@ -141,6 +160,46 @@ int main() {
                 camera.moveType = Camera::MoveType::Orbit;
                 std::cout << "Camera mode: Orbit\n";
                 break;
+
+            case GLFW_KEY_O:
+                extrusionState.mode = EditMode::Draw;
+                extrusionState.polygon3D.clear();
+                extrusionState.hasPreview = false;
+                break;
+
+            case GLFW_KEY_T:
+                camera.eye = glm::vec3(0, 0, 10);
+                camera.look = glm::vec3(0, 0, 0);
+                camera.up = glm::vec3(0, 1, 0);
+                break;
+
+            case GLFW_KEY_P:
+                if (extrusionState.plane == DrawPlane::XY)
+                    extrusionState.plane = DrawPlane::XZ;
+                else if (extrusionState.plane == DrawPlane::XZ)
+                    extrusionState.plane = DrawPlane::YZ;
+                else
+                    extrusionState.plane = DrawPlane::XY;
+                std::cout << "Plano: "
+                          << getPlaneNameString(extrusionState.plane) << "\n";
+                break;
+
+            case GLFW_KEY_SPACE:
+                if (extrusionState.mode == EditMode::Draw &&
+                    extrusionState.polygon3D.size() >= 3) {
+                    extrusionState.mode = EditMode::Extrude;
+                    extrusionState.extrudeDepth = 0.0f;
+                    extrusionState.extrudeStartPoint =
+                        extrusionState.polygon3D[0];
+                } else if (extrusionState.mode == EditMode::Extrude) {
+                    buildExtrudedSolid(
+                        extrusionState.polygon3D, extrusionState.plane,
+                        extrusionState.extrudeDepth, shapes, material);
+                    extrusionState.mode = EditMode::None;
+                    extrusionState.polygon3D.clear();
+                    extrusionState.hasPreview = false;
+                }
+                break;
         }
     });
 
@@ -149,6 +208,9 @@ int main() {
         float dy = static_cast<float>(y - lastY);
         lastX = x;
         lastY = y;
+
+        mouseX = x;
+        mouseY = y;
 
         const float sensitivity = 0.5f;
         if (rmousepress) {
@@ -162,12 +224,21 @@ int main() {
         camera.addOrbitDistance(-yoffset * zoomStep);
     });
 
-    app.setMouseButtonCallback([&](int button, int action, int mods) {
+    app.setMouseButtonCallback([&](int button, int action, int /*mods*/) {
         if (button == GLFW_MOUSE_BUTTON_RIGHT) {
             if (action == GLFW_PRESS) {
                 rmousepress = true;
             } else
                 rmousepress = false;
+        }
+
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+            if (extrusionState.mode == EditMode::Draw &&
+                extrusionState.hasPreview) {
+                extrusionState.polygon3D.push_back(extrusionState.previewPoint);
+                std::cout << "Vértice adicionado ("
+                          << extrusionState.polygon3D.size() << " total)\n";
+            }
         }
     });
 
@@ -196,16 +267,19 @@ int main() {
         // atualizar posição da câmera no renderer (para Phong)
         renderer.setCameraEye(camera.eye);
 
+        // atualizar preview do ponto no plano de desenho
+        if (extrusionState.mode != EditMode::None) {
+            updateExtrusionPreview(extrusionState, mouseX, mouseY, w, h,
+                                   camera);
+        }
+
+        // desenhar sólidos
         for (auto& s : shapes.objects) {
             for (const auto& face : s.mesh.faces) {
                 Polygon poly2D = camera.projectAndClip(s.mesh, face, w, h);
 
                 if (poly2D.verts.size() >= 3) {
-                    // calcular iluminação baseada no modo de shading
-
                     if (currentMode == ShadingMode::Flat) {
-                        // FLAT: calcular intensidade uma vez por face usando o
-                        // centro
                         glm::vec3 faceCenter(0);
                         glm::vec3 faceNormal(0);
                         for (const auto& v : poly2D.verts) {
@@ -220,21 +294,19 @@ int main() {
                         renderer.setFlatIntensity(intensity);
 
                     } else if (currentMode == ShadingMode::Gouraud) {
-                        // GOURAUD: calcular intensidade por vértice
                         for (auto& v : poly2D.verts) {
                             glm::vec3 pos3D(v.x, v.y, v.z);
                             v.intensity = renderer.phong(pos3D, v.normal,
                                                          *poly2D.material);
                         }
                     }
-                    // PHONG: intensidade será calculada por pixel no scanline
 
                     fill_polygon(poly2D, fb, renderer);
                 }
             }
         }
 
-        // desenha as linhas
+        // desenha as linhas dos eixos globais
         for (const auto& l3 : lines.objects) {
             Line2D l2;
 
@@ -245,6 +317,7 @@ int main() {
             plot_line(l2, fb);
         }
 
+        // gizmo do look
         for (const auto& base : lookGizmo.objects) {
             Line3D worldLine = base;
             worldLine.p1 += camera.look;
@@ -253,6 +326,73 @@ int main() {
             Line2D l2;
             if (camera.projectLine(worldLine, l2, w, h)) {
                 plot_line(l2, fb);
+            }
+        }
+
+        // desenhar polígono no modo draw (linhas amarelas)
+        if (extrusionState.mode == EditMode::Draw) {
+            // Desenha as linhas do polígono
+            if (!extrusionState.polygon3D.empty()) {
+                for (int i = 1; i < (int)extrusionState.polygon3D.size(); ++i) {
+                    Line3D l{extrusionState.polygon3D[i - 1],
+                             extrusionState.polygon3D[i],
+                             {255, 255, 0, 255},
+                             2};
+                    drawLine3D(l, camera, fb, w, h);
+                }
+
+                // Linha de preview do último vértice até o mouse
+                if (extrusionState.hasPreview) {
+                    Line3D l{extrusionState.polygon3D.back(),
+                             extrusionState.previewPoint,
+                             {255, 255, 255, 255},
+                             2};
+                    drawLine3D(l, camera, fb, w, h);
+                }
+            }
+        }
+
+        // renderizar preview da extrusão como poliedro sólido
+        if (extrusionState.mode == EditMode::Extrude &&
+            extrusionState.polygon3D.size() >= 3) {
+            // Cria material cyan para preview
+            Material previewMat = material;
+            previewMat.color = {50, 200, 200, 255};  // Cyan
+
+            // Cria o poliedro temporário
+            Polyhedron previewPoly = createExtrudedPolyhedron(
+                extrusionState.polygon3D, extrusionState.plane,
+                extrusionState.extrudeDepth, previewMat);
+
+            // Renderiza o poliedro de preview
+            for (const auto& face : previewPoly.faces) {
+                Polygon poly2D = camera.projectAndClip(previewPoly, face, w, h);
+
+                if (poly2D.verts.size() >= 3) {
+                    if (currentMode == ShadingMode::Flat) {
+                        glm::vec3 faceCenter(0);
+                        glm::vec3 faceNormal(0);
+                        for (const auto& v : poly2D.verts) {
+                            faceCenter += glm::vec3(v.x, v.y, v.z);
+                            faceNormal += v.normal;
+                        }
+                        faceCenter /= float(poly2D.verts.size());
+                        faceNormal = glm::normalize(faceNormal);
+
+                        float intensity = renderer.phong(faceCenter, faceNormal,
+                                                         *poly2D.material);
+                        renderer.setFlatIntensity(intensity);
+
+                    } else if (currentMode == ShadingMode::Gouraud) {
+                        for (auto& v : poly2D.verts) {
+                            glm::vec3 pos3D(v.x, v.y, v.z);
+                            v.intensity = renderer.phong(pos3D, v.normal,
+                                                         *poly2D.material);
+                        }
+                    }
+
+                    fill_polygon(poly2D, fb, renderer);
+                }
             }
         }
 
@@ -284,6 +424,30 @@ int main() {
         drawText(fb, 10, 10 + 3 * lineH,
                  std::string("FPS: ") + std::to_string(fps), hudColor,
                  fontScale);
+
+        int hudY = 10 + 4 * lineH;
+        if (extrusionState.mode == EditMode::None) {
+            drawText(fb, 10, hudY, "O: DRAW POLYGON   P: CHANGE PLANE",
+                     hudColor, fontScale);
+        } else if (extrusionState.mode == EditMode::Draw) {
+            drawText(fb, 10, hudY, "LMB: ADD VERTEX   SPACE: START EXTRUDE",
+                     hudColor, fontScale);
+
+            std::string info = std::string("PLANE: ") +
+                               getPlaneNameString(extrusionState.plane) +
+                               "   VERTICES: " +
+                               std::to_string(extrusionState.polygon3D.size());
+
+            drawText(fb, 10, hudY + lineH, info, hudColor, fontScale);
+        } else if (extrusionState.mode == EditMode::Extrude) {
+            drawText(fb, 10, hudY, "MOVE MOUSE TO SET HEIGHT   SPACE: CONFIRM",
+                     hudColor, fontScale);
+
+            char depthStr[64];
+            std::snprintf(depthStr, sizeof(depthStr), "HEIGHT: %.2f",
+                          extrusionState.extrudeDepth);
+            drawText(fb, 10, hudY + lineH, depthStr, hudColor, fontScale);
+        }
 
         app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
 
