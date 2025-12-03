@@ -12,7 +12,6 @@
 #include "../include/shapes.h"
 #include "../include/types.h"
 
-
 int main() {
     GLApp app;
     GLApp::Config cfg;
@@ -24,20 +23,29 @@ int main() {
     // Framebuffer CPU (cor + z-buffer)
     Framebuffer fb(cfg.width, cfg.height);
 
-    // Criar cubo
+    // Criar Figuras
     Shapes shapes;
+    Shapes focal;
     // Configurar câmera
     Camera camera;
-    // Configurar Renderer (iluminação e shading)
+    // Configurar Renderer (iluminação e shadi  ng)
     Renderer renderer;
 
-    shapes.createCube({0, 0, 0}, 2.0f);
+    Material material;
+
+    shapes.createCube(material, {0, 0, 0}, 2.0f); //Criar cubo
+    focal.createSphere(material, camera.look, 0.04f, 6, 6); //Criar look Point
+
+
+    
 
     initFont8x8();
 
     double lastTime = glfwGetTime();
     int framesThisSecond = 0;
     int fps = 0;
+
+    bool rmousepress = false;
 
     Light light;
     light.pos = glm::vec3(5, 5, 5);
@@ -61,10 +69,10 @@ int main() {
                 break;
 
             case GLFW_KEY_W:
-                camera.moveZ(-moveStep);
+                camera.moveZ(moveStep);
                 break;
             case GLFW_KEY_S:
-                camera.moveZ(moveStep);
+                camera.moveZ(-moveStep);
                 break;
             case GLFW_KEY_A:
                 camera.moveX(-moveStep);
@@ -78,7 +86,21 @@ int main() {
             case GLFW_KEY_E:
                 camera.moveY(-moveStep);
                 break;
-
+            case GLFW_KEY_Z:
+                shapes.createSphere(material, camera.look,1.5,12,24);
+                break;
+            case GLFW_KEY_X:
+                shapes.createCylinder(material, camera.look,1.5,2.0,16);
+                break;
+            case GLFW_KEY_C:
+                shapes.createCube(material, camera.look,2.0);
+                break;
+            case GLFW_KEY_V:
+                shapes.createPyramid(material, camera.look,1.5,1.5);
+                break;
+            case GLFW_KEY_Y:
+                //select_color(material, fb);
+                break;
             case GLFW_KEY_1:
                 currentMode = ShadingMode::Flat;
                 renderer.setMode(currentMode);
@@ -94,6 +116,22 @@ int main() {
                 renderer.setMode(currentMode);
                 std::cout << "Modo: Phong Shading\n";
                 break;
+            case GLFW_KEY_7:
+                camera.type = Camera::ProjType::Perspective;
+                std::cout << "Camera Projection: Perspective\n";
+                break;
+            case GLFW_KEY_8:
+                camera.type = Camera::ProjType::Ortho;
+                std::cout << "Camera Projection: Orthogonal\n";
+                break;
+            case GLFW_KEY_9:
+                camera.moveType = Camera::MoveType::Fps;
+                std::cout << "Camera Mode: Fps\n";
+                break;
+            case GLFW_KEY_0:
+                camera.moveType = Camera::MoveType::Orbit;
+                std::cout << "Camera mode: Orbit\n";
+                break;
         }
     });
 
@@ -104,13 +142,26 @@ int main() {
         lastY = y;
 
         const float sensitivity = 0.5f;
-        camera.addX(dx * sensitivity);   // esquerda/direita
-        camera.addY(-dy * sensitivity);  // cima/baixo
+        if(rmousepress){
+            camera.addX(dx * sensitivity);   // esquerda/direita
+            camera.addY(-dy * sensitivity);  // cima/baixo
+        }
     });
 
     app.setScrollCallback([&](double /*xoffset*/, double yoffset) {
         const float zoomStep = 1.0f;
         camera.addOrbitDistance(-yoffset * zoomStep);
+    });
+
+    app.setMouseButtonCallback([&](int button, int action, int mods){
+        if(button == GLFW_MOUSE_BUTTON_RIGHT){
+            if(action == GLFW_PRESS){
+                rmousepress = true;
+            }
+            else rmousepress = false;
+        }
+
+
     });
 
     while (!glfwWindowShouldClose(app.window())) {
@@ -137,6 +188,7 @@ int main() {
 
         // atualizar posição da câmera no renderer (para Phong)
         renderer.setCameraEye(camera.eye);
+        focal.objects[0].translate(camera.look-focal.objects[0].mesh.verts[0].position);
 
         for (auto& s : shapes.objects) {
             for (const auto& face : s.mesh.faces) {
@@ -176,6 +228,33 @@ int main() {
             }
         }
 
+        //Desenhar ponto de visagem da camera
+        for (auto& s : focal.objects) {
+            for (const auto& face : s.mesh.faces) {
+                Polygon poly2D = camera.projectAndClip(s.mesh, face, w, h);
+
+                if (poly2D.verts.size() >= 3) {
+                    // calcular iluminação baseada no modo de shading
+                        // FLAT: calcular intensidade uma vez por face usando o
+                        // centro
+                        glm::vec3 faceCenter(0);
+                        glm::vec3 faceNormal(0);
+                        for (const auto& v : poly2D.verts) {
+                            faceCenter += glm::vec3(v.x, v.y, v.z);
+                            faceNormal += v.normal;
+                        }
+                        faceCenter /= float(poly2D.verts.size());
+                        faceNormal = glm::normalize(faceNormal);
+
+                        float intensity = renderer.phong(faceCenter, faceNormal,
+                                                         *poly2D.material);
+                        renderer.setFlatIntensity(intensity);
+
+                    fill_polygon(poly2D, fb, renderer);
+                }
+            }
+        }
+
         Color hudColor = {220, 220, 220, 255};
 
         int fontScale = 2;
@@ -205,6 +284,7 @@ int main() {
                  std::string("FPS: ") + std::to_string(fps), hudColor,
                  fontScale);
 
+                
         app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
 
         app.endFrame();

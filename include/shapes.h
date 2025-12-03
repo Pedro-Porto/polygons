@@ -24,8 +24,8 @@ class Shapes {
 public:
     std::vector<Shape> objects;
 
-    Shape& createCube(const glm::vec3& center = {0,0,0}, float size = 2.0f);
-    Shape& createPyramid(const glm::vec3& center, float size, float height);
-    Shape& createCylinder(const glm::vec3& center, float radius, float height, int slices = 16);
-    Shape& createSphere(const glm::vec3& center, float radius, int stacks = 12, int slices = 24);
+    Shape& createCube(Material material, const glm::vec3& center = {0,0,0}, float size = 2.0f);
+    Shape& createPyramid(Material material, const glm::vec3& center, float size, float height);
+    Shape& createCylinder(Material material, const glm::vec3& center, float radius, float height, int slices = 16);
+    Shape& createSphere(Material material, const glm::vec3& center, float radius, int stacks = 12, int slices = 24);
 };
