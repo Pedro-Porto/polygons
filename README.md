@@ -182,8 +182,8 @@ Sistema completo para manipular objetos na cena:
 ### Opção 1: Executáveis Pré-compilados
 
 Na pasta `dist/` você encontrará executáveis pré-compilados para:
-- **Linux**: `dist/linux/app`
-- **Windows**: `dist/windows/app.exe`
+- **Linux**: `dist/app`
+- **Windows**: `dist/app.exe`
 
 Basta executar o arquivo correspondente ao seu sistema operacional.
 
