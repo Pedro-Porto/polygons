@@ -92,119 +92,7 @@ int main() {
     app.setKeyCallback([&](int key, int, int action, int) {
         if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
 
-        const float moveStep = 0.2f;
-
-        switch (key) {
-            case GLFW_KEY_ESCAPE:
-                glfwSetWindowShouldClose(glfwGetCurrentContext(), 1);
-                break;
-
-            case GLFW_KEY_W:
-                camera.moveZ(moveStep);
-                break;
-            case GLFW_KEY_S:
-                camera.moveZ(-moveStep);
-                break;
-            case GLFW_KEY_A:
-                camera.moveX(-moveStep);
-                break;
-            case GLFW_KEY_D:
-                camera.moveX(moveStep);
-                break;
-            case GLFW_KEY_Q:
-                camera.moveY(moveStep);
-                break;
-            case GLFW_KEY_E:
-                camera.moveY(-moveStep);
-                break;
-            case GLFW_KEY_Z:
-                shapes.createSphere(material, camera.look, 1.5, 12, 24);
-                break;
-            case GLFW_KEY_X:
-                shapes.createCylinder(material, camera.look, 1.5, 2.0, 16);
-                break;
-            case GLFW_KEY_C:
-                shapes.createCube(material, camera.look, 2.0);
-                break;
-            case GLFW_KEY_V:
-                shapes.createPyramid(material, camera.look, 1.5, 1.5);
-                break;
-            case GLFW_KEY_Y:
-                // select_color(material, fb);
-                break;
-            case GLFW_KEY_1:
-                currentMode = ShadingMode::Flat;
-                renderer.setMode(currentMode);
-                std::cout << "Modo: Flat Shading\n";
-                break;
-            case GLFW_KEY_2:
-                currentMode = ShadingMode::Gouraud;
-                renderer.setMode(currentMode);
-                std::cout << "Modo: Gouraud Shading\n";
-                break;
-            case GLFW_KEY_3:
-                currentMode = ShadingMode::Phong;
-                renderer.setMode(currentMode);
-                std::cout << "Modo: Phong Shading\n";
-                break;
-            case GLFW_KEY_7:
-                camera.type = Camera::ProjType::Perspective;
-                std::cout << "Camera Projection: Perspective\n";
-                break;
-            case GLFW_KEY_8:
-                camera.type = Camera::ProjType::Ortho;
-                std::cout << "Camera Projection: Orthogonal\n";
-                break;
-            case GLFW_KEY_9:
-                camera.moveType = Camera::MoveType::Fps;
-                std::cout << "Camera Mode: Fps\n";
-                break;
-            case GLFW_KEY_0:
-                camera.moveType = Camera::MoveType::Orbit;
-                std::cout << "Camera mode: Orbit\n";
-                break;
-
-            case GLFW_KEY_O:
-                extrusionState.mode = EditMode::Draw;
-                extrusionState.polygon3D.clear();
-                extrusionState.hasPreview = false;
-                break;
-
-            case GLFW_KEY_T:
-                camera.eye = glm::vec3(0, 0, 10);
-                camera.look = glm::vec3(0, 0, 0);
-                camera.up = glm::vec3(0, 1, 0);
-                break;
-
-            case GLFW_KEY_P:
-                if (extrusionState.plane == DrawPlane::XY)
-                    extrusionState.plane = DrawPlane::XZ;
-                else if (extrusionState.plane == DrawPlane::XZ)
-                    extrusionState.plane = DrawPlane::YZ;
-                else
-                    extrusionState.plane = DrawPlane::XY;
-                std::cout << "Plano: "
-                          << getPlaneNameString(extrusionState.plane) << "\n";
-                break;
-
-            case GLFW_KEY_SPACE:
-                if (extrusionState.mode == EditMode::Draw &&
-                    extrusionState.polygon3D.size() >= 3) {
-                    extrusionState.mode = EditMode::Extrude;
-                    extrusionState.extrudeDepth = 0.0f;
-                    extrusionState.extrudeStartPoint =
-                        extrusionState.polygon3D[0];
-                } else if (extrusionState.mode == EditMode::Extrude) {
-                    buildExtrudedSolid(
-                        extrusionState.polygon3D, extrusionState.plane,
-                        extrusionState.extrudeDepth, shapes, material);
-                    extrusionState.mode = EditMode::None;
-                    extrusionState.polygon3D.clear();
-                    extrusionState.hasPreview = false;
-                }
-                break;
-        }
-        key_press(key,menu_type,shape_type,camera,material,currentMode,renderer);
+        key_press(key,menu_type,shape_type,camera,material,currentMode,renderer,extrusionState,shapes);
     });
 
     app.setCursorPosCallback([&](double x, double y) {
@@ -244,7 +132,7 @@ int main() {
                           << extrusionState.polygon3D.size() << " total)\n";
             }
         }
-        if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+        if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && extrusionState.mode != EditMode::Draw){
             switch (shape_type){
                 case ShapeType::Cube:
                 shapes.createCube(material, camera.look,2.0);
@@ -417,31 +305,7 @@ int main() {
             }
         }
 
-        menu(menu_type, shape_type, fb, camera, currentMode, material, fps);
-
-        int hudY = 10 + 4 * lineH;
-        if (extrusionState.mode == EditMode::None) {
-            drawText(fb, 10, hudY, "O: DRAW POLYGON   P: CHANGE PLANE",
-                     hudColor, fontScale);
-        } else if (extrusionState.mode == EditMode::Draw) {
-            drawText(fb, 10, hudY, "LMB: ADD VERTEX   SPACE: START EXTRUDE",
-                     hudColor, fontScale);
-
-            std::string info = std::string("PLANE: ") +
-                               getPlaneNameString(extrusionState.plane) +
-                               "   VERTICES: " +
-                               std::to_string(extrusionState.polygon3D.size());
-
-            drawText(fb, 10, hudY + lineH, info, hudColor, fontScale);
-        } else if (extrusionState.mode == EditMode::Extrude) {
-            drawText(fb, 10, hudY, "MOVE MOUSE TO SET HEIGHT   SPACE: CONFIRM",
-                     hudColor, fontScale);
-
-            char depthStr[64];
-            std::snprintf(depthStr, sizeof(depthStr), "HEIGHT: %.2f",
-                          extrusionState.extrudeDepth);
-            drawText(fb, 10, hudY + lineH, depthStr, hudColor, fontScale);
-        }
+        menu(menu_type, shape_type, fb, camera, currentMode, material, fps, extrusionState);
 
         app.drawFramebuffer(fb.colorData(), fb.width(), fb.height());
 

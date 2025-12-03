@@ -77,4 +77,4 @@ struct Line2D {
     int width = 1;
 };
 enum class ShapeType{Cube, Cylinder, Sphere, Pyramid};
-enum class MenuType{Camera, Color, Shape, Materials};
+enum class MenuType{Camera, Color, Shape, Materials, Extrusion};

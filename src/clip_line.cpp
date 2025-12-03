@@ -68,7 +68,6 @@ bool clipLineCohenSutherland(Line2D& l, int xmin, int ymin, int xmax,
                 y = y0 + t * (y1 - y0);
             }
 
-            // interpola z corretamente também
             z = z0 + t * (z1 - z0);
 
             if (out == out0) {
